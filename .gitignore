@@ -23,3 +23,5 @@ out/
 # Log files
 *.log
 .aider*
+.vscode/
+.antigravitycli/

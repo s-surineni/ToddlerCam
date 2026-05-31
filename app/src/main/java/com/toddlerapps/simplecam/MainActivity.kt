@@ -36,30 +36,44 @@ package com.toddlerapps.simplecam
 
 import android.Manifest
 import android.app.AlertDialog
+import android.content.ContentValues
 import android.content.pm.PackageManager
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 /**
  * Main Screen - Kiosk mode for kids
- * Exit the app by drawing an "O" circle gesture anywhere on the screen.
+ * - Tap anywhere to take a photo
+ * - Photo preview shows for 3 seconds then returns to camera
+ * - Draw an "O" circle gesture to exit the app
  */
 class MainActivity : AppCompatActivity() {
 
   private lateinit var previewView: PreviewView
   private lateinit var circleGestureView: CircleGestureView
+  private lateinit var photoPreview: ImageView
+  private var imageCapture: ImageCapture? = null
+  private var previewUri: Uri? = null
 
   private val requestPermissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -84,13 +98,28 @@ class MainActivity : AppCompatActivity() {
 
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
+    photoPreview = findViewById(R.id.photoPreview)
 
-    // When a circle gesture is detected, show exit confirmation
-    circleGestureView.onCircleDetected = {
-      showExitDialog()
+    // Tap anywhere to take a photo (only when preview is not showing)
+    circleGestureView.onTapDetected = {
+      if (photoPreview.visibility != View.VISIBLE) {
+        takePhoto()
+      }
     }
 
-    // Enter lock task (kiosk) mode to prevent navigation bar access
+    // Circle gesture to exit (only when preview is not showing)
+    circleGestureView.onCircleDetected = {
+      if (photoPreview.visibility != View.VISIBLE) {
+        showExitDialog()
+      }
+    }
+
+    // Tapping on the photo preview dismisses it immediately
+    photoPreview.setOnClickListener {
+      hidePhotoPreview()
+    }
+
+    // Enter lock task (kiosk) mode
     startLockTask()
 
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
@@ -110,25 +139,17 @@ class MainActivity : AppCompatActivity() {
     super.onWindowFocusChanged(hasFocus)
     if (hasFocus) {
       enterImmersiveMode()
-      // Re-enter lock task mode in case it was exited
       try {
         startLockTask()
       } catch (_: Exception) { }
     }
   }
 
-  /**
-   * Disable the back button so kids cannot exit the app
-   */
   @Deprecated("Deprecated in Java")
   override fun onBackPressed() {
-    // Do nothing — prevent kids from exiting
+    // Do nothing
   }
 
-  /**
-   * Show a confirmation dialog when a circle gesture is detected.
-   * Only the parent should know to draw an "O" to exit.
-   */
   private fun showExitDialog() {
     AlertDialog.Builder(this)
       .setTitle("Exit App")
@@ -141,20 +162,38 @@ class MainActivity : AppCompatActivity() {
       .show()
   }
 
-  /**
-   * Enter fully immersive mode: hide status bar, navigation bar, and prevent
-   * pull-down gestures from revealing them.
-   */
+  private fun showPhotoPreview(uri: Uri) {
+    previewUri = uri
+    try {
+      val inputStream = contentResolver.openInputStream(uri)
+      val bitmap = BitmapFactory.decodeStream(inputStream)
+      inputStream?.close()
+      photoPreview.setImageBitmap(bitmap)
+      photoPreview.visibility = View.VISIBLE
+
+      // Auto-dismiss after 3 seconds
+      photoPreview.postDelayed({
+        hidePhotoPreview()
+      }, 3000)
+    } catch (e: Exception) {
+      // If preview fails, just continue
+    }
+  }
+
+  private fun hidePhotoPreview() {
+    photoPreview.visibility = View.GONE
+    photoPreview.setImageDrawable(null)
+    previewUri = null
+  }
+
   private fun enterImmersiveMode() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      // API 30+: Use WindowInsetsController
       window.insetsController?.let { controller ->
         controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
         controller.systemBarsBehavior =
           WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
       }
     } else {
-      // API 26–29: Use system UI flags
       @Suppress("DEPRECATION")
       window.decorView.systemUiVisibility = (
         View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -167,6 +206,43 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
+  private fun takePhoto() {
+    val imageCapture = imageCapture ?: return
+
+    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+    val fileName = "TODDLERCAM_$timestamp"
+
+    val contentValues = ContentValues().apply {
+      put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+      put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+      if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ToddlerCam")
+      }
+    }
+
+    val outputOptions = ImageCapture.OutputFileOptions.Builder(
+      contentResolver,
+      MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+      contentValues
+    ).build()
+
+    imageCapture.takePicture(
+      outputOptions,
+      ContextCompat.getMainExecutor(this),
+      object : ImageCapture.OnImageSavedCallback {
+        override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+          output.savedUri?.let { uri ->
+            showPhotoPreview(uri)
+          }
+        }
+
+        override fun onError(exception: ImageCaptureException) {
+          Toast.makeText(this@MainActivity, "Failed to save photo", Toast.LENGTH_SHORT).show()
+        }
+      }
+    )
+  }
+
   private fun startCamera() {
     val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
     cameraProviderFuture.addListener({
@@ -176,11 +252,15 @@ class MainActivity : AppCompatActivity() {
         it.setSurfaceProvider(previewView.surfaceProvider)
       }
 
+      imageCapture = ImageCapture.Builder()
+        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+        .build()
+
       val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
       try {
         cameraProvider.unbindAll()
-        cameraProvider.bindToLifecycle(this, cameraSelector, preview)
+        cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
       } catch (e: Exception) {
         Toast.makeText(this, "Camera initialization failed", Toast.LENGTH_SHORT).show()
       }

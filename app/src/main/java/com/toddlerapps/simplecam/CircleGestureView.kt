@@ -12,8 +12,9 @@ import kotlin.math.abs
 import kotlin.math.sqrt
 
 /**
- * A transparent overlay view that detects when the user draws a circle ("O") gesture.
- * When a circle is detected, [onCircleDetected] callback is invoked.
+ * A transparent overlay view that:
+ * - Detects taps (quick touches) and invokes [onTapDetected]
+ * - Detects circle ("O") gestures and invokes [onCircleDetected]
  */
 class CircleGestureView @JvmOverloads constructor(
   context: Context,
@@ -22,6 +23,7 @@ class CircleGestureView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
   var onCircleDetected: (() -> Unit)? = null
+  var onTapDetected: (() -> Unit)? = null
 
   private val touchPoints = mutableListOf<Pair<Float, Float>>()
   private val path = Path()
@@ -29,8 +31,12 @@ class CircleGestureView @JvmOverloads constructor(
     isAntiAlias = true
     style = Paint.Style.STROKE
     strokeWidth = 8f
-    color = 0x40FFFFFF // Semi-transparent white for visual feedback
+    color = 0x40FFFFFF
   }
+
+  private var touchStartTime = 0L
+  private var touchStartX = 0f
+  private var touchStartY = 0f
 
   init {
     isClickable = true
@@ -42,6 +48,9 @@ class CircleGestureView @JvmOverloads constructor(
   override fun onTouchEvent(event: MotionEvent): Boolean {
     when (event.action) {
       MotionEvent.ACTION_DOWN -> {
+        touchStartTime = System.currentTimeMillis()
+        touchStartX = event.x
+        touchStartY = event.y
         touchPoints.clear()
         path.reset()
         path.moveTo(event.x, event.y)
@@ -57,15 +66,34 @@ class CircleGestureView @JvmOverloads constructor(
         path.lineTo(event.x, event.y)
         touchPoints.add(Pair(event.x, event.y))
         invalidate()
-        if (isCircle()) {
+
+        val elapsed = System.currentTimeMillis() - touchStartTime
+        val totalPathLength = totalPathLength()
+
+        // Quick tap with minimal movement -> take photo
+        if (elapsed < 300 && totalPathLength < 50f) {
+          postDelayed({
+            path.reset()
+            touchPoints.clear()
+            invalidate()
+          }, 200)
+          onTapDetected?.invoke()
+        } else if (isCircle()) {
+          // Circle gesture -> exit app
+          postDelayed({
+            path.reset()
+            touchPoints.clear()
+            invalidate()
+          }, 500)
           onCircleDetected?.invoke()
+        } else {
+          // Not a tap or circle -> just clear
+          postDelayed({
+            path.reset()
+            touchPoints.clear()
+            invalidate()
+          }, 200)
         }
-        // Clear the drawn path after a short delay
-        postDelayed({
-          path.reset()
-          touchPoints.clear()
-          invalidate()
-        }, 500)
       }
     }
     return true
@@ -76,42 +104,29 @@ class CircleGestureView @JvmOverloads constructor(
     canvas.drawPath(path, paint)
   }
 
-  /**
-   * Determines if the collected touch points form a roughly circular shape.
-   * Uses these heuristics:
-   * 1. Sufficient number of points
-   * 2. Start and end points are close together (circle closes)
-   * 3. The path has a minimum length
-   * 4. Points are roughly equidistant from the center
-   */
   private fun isCircle(): Boolean {
     if (touchPoints.size < 15) return false
 
     val start = touchPoints.first()
     val end = touchPoints.last()
 
-    // Start and end must be close together (circle closes)
     val closureDistance = distance(start, end)
     val pathLength = totalPathLength()
 
-    if (pathLength < 150f) return false // Too short to be a meaningful circle
-
-    // The closure distance should be small relative to total path length
+    if (pathLength < 150f) return false
     if (closureDistance > pathLength * 0.30f) return false
 
-    // Calculate the center and average radius
     val centerX = touchPoints.map { it.first }.average().toFloat()
     val centerY = touchPoints.map { it.second }.average().toFloat()
     val center = Pair(centerX, centerY)
 
     val avgRadius = touchPoints.map { distance(it, center) }.average().toFloat()
 
-    if (avgRadius < 20f) return false // Too small
+    if (avgRadius < 20f) return false
 
-    // Check that most points are roughly the same distance from center (circular shape)
     val variance = touchPoints.map { abs(distance(it, center) - avgRadius) / avgRadius }.average()
 
-    return variance < 0.40 // Points should be within ~40% of the average radius
+    return variance < 0.40
   }
 
   private fun distance(a: Pair<Float, Float>, b: Pair<Float, Float>): Float {

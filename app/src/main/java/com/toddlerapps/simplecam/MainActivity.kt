@@ -35,8 +35,14 @@
 package com.toddlerapps.simplecam
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -47,7 +53,7 @@ import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 
 /**
- * Main Screen
+ * Main Screen - Kiosk mode for kids
  */
 class MainActivity : AppCompatActivity() {
 
@@ -68,15 +74,78 @@ class MainActivity : AppCompatActivity() {
     setTheme(R.style.AppTheme)
 
     super.onCreate(savedInstanceState)
+
+    // Keep screen on
+    window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
     setContentView(R.layout.activity_main)
 
     previewView = findViewById(R.id.previewView)
+
+    // Enter kiosk / lock task mode
+    startLockTask()
 
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         == PackageManager.PERMISSION_GRANTED) {
       startCamera()
     } else {
       requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+  }
+
+  override fun onResume() {
+    super.onResume()
+    enterImmersiveMode()
+  }
+
+  override fun onWindowFocusChanged(hasFocus: Boolean) {
+    super.onWindowFocusChanged(hasFocus)
+    if (hasFocus) {
+      enterImmersiveMode()
+    }
+  }
+
+  /**
+   * Disable the back button so kids cannot exit the app
+   */
+  @Deprecated("Deprecated in Java")
+  override fun onBackPressed() {
+    // Do nothing — prevent kids from exiting
+  }
+
+  /**
+   * Enter fully immersive mode: hide status bar, navigation bar, and prevent
+   * pull-down gestures from revealing them.
+   */
+  private fun enterImmersiveMode() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      // API 30+: Use WindowInsetsController
+      window.insetsController?.let { controller ->
+        controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+        controller.systemBarsBehavior =
+          WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+      }
+    } else {
+      // API 26–29: Use system UI flags
+      @Suppress("DEPRECATION")
+      window.decorView.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_FULLSCREEN
+          or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+          or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+          or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+          or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+          or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+      )
+    }
+  }
+
+  /**
+   * Override to prevent launching other activities via intent
+   */
+  override fun startActivityForResult(intent: Intent, requestCode: Int) {
+    // Only allow internal intents
+    if (intent.`package` == null || intent.`package` == packageName) {
+      super.startActivityForResult(intent, requestCode)
     }
   }
 

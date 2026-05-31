@@ -22,3 +22,4 @@ out/
 
 # Log files
 *.log
+.aider*

@@ -35,7 +35,7 @@
 package com.toddlerapps.simplecam
 
 import android.Manifest
-import android.content.Intent
+import android.app.AlertDialog
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -54,10 +54,12 @@ import androidx.core.content.ContextCompat
 
 /**
  * Main Screen - Kiosk mode for kids
+ * Exit the app by drawing an "O" circle gesture anywhere on the screen.
  */
 class MainActivity : AppCompatActivity() {
 
   private lateinit var previewView: PreviewView
+  private lateinit var circleGestureView: CircleGestureView
 
   private val requestPermissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -81,9 +83,12 @@ class MainActivity : AppCompatActivity() {
     setContentView(R.layout.activity_main)
 
     previewView = findViewById(R.id.previewView)
+    circleGestureView = findViewById(R.id.circleGestureView)
 
-    // Enter kiosk / lock task mode
-    startLockTask()
+    // When a circle gesture is detected, show exit confirmation
+    circleGestureView.onCircleDetected = {
+      showExitDialog()
+    }
 
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         == PackageManager.PERMISSION_GRANTED) {
@@ -114,6 +119,22 @@ class MainActivity : AppCompatActivity() {
   }
 
   /**
+   * Show a confirmation dialog when a circle gesture is detected.
+   * Only the parent should know to draw an "O" to exit.
+   */
+  private fun showExitDialog() {
+    AlertDialog.Builder(this)
+      .setTitle("Exit App")
+      .setMessage("Are you sure you want to exit?")
+      .setPositiveButton("Exit") { _, _ ->
+        stopLockTask()
+        finishAffinity()
+      }
+      .setNegativeButton("Cancel", null)
+      .show()
+  }
+
+  /**
    * Enter fully immersive mode: hide status bar, navigation bar, and prevent
    * pull-down gestures from revealing them.
    */
@@ -136,16 +157,6 @@ class MainActivity : AppCompatActivity() {
           or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
           or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
       )
-    }
-  }
-
-  /**
-   * Override to prevent launching other activities via intent
-   */
-  override fun startActivityForResult(intent: Intent, requestCode: Int) {
-    // Only allow internal intents
-    if (intent.`package` == null || intent.`package` == packageName) {
-      super.startActivityForResult(intent, requestCode)
     }
   }
 

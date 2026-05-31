@@ -5,25 +5,348 @@
     android:layout_height="match_parent"
     tools:context=".MainActivity">
 
-  <!-- Camera Preview -->
-  <androidx.camera.view.PreviewView
-      android:id="@+id/preview_view"
-      android:layout_width="match_parent"
-      android:layout_height="match_parent" />
+    <!-- Camera Preview -->
+    <androidx.camera.view.PreviewView
+        android:id="@+id/preview_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
 
-  <!-- Circle Detection Overlay -->
-  <com.toddlerapps.simplecam.CircleDetectionView
-      android:id="@+id/circle_detection_view"
-      android:layout_width="match_parent"
-      android:layout_height="match_parent" />
+    <!-- Active Camera Overlay (Seasons / Animals Decor) -->
+    <FrameLayout
+        android:id="@+id/layout_decorations_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="false"
+        android:focusable="false" />
 
-  <!-- Photo Preview Image View -->
-  <ImageView
-      android:id="@+id/photo_preview_view"
-      android:layout_width="match_parent"
-      android:layout_height="match_parent"
-      android:scaleType="centerCrop"
-      android:visibility="gone"
-      tools:ignore="ContentDescription" />
+    <!-- Top Banner displaying active mode -->
+    <TextView
+        android:id="@+id/tv_camera_banner"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="24dp"
+        android:background="@drawable/camera_banner_background"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp"
+        android:textColor="#FFFFFF"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:visibility="gone"
+        tools:text="🌸 SPRING 🌸" />
+
+    <!-- Change Mode Gear Button -->
+    <TextView
+        android:id="@+id/btn_change_mode"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="24dp"
+        android:layout_marginEnd="20dp"
+        android:background="@drawable/camera_banner_background"
+        android:paddingStart="14dp"
+        android:paddingEnd="14dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp"
+        android:text="⚙️ Mode"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
+    <!-- Circle Detection Overlay -->
+    <com.toddlerapps.simplecam.CircleDetectionView
+        android:id="@+id/circle_detection_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Photo Preview Image View -->
+    <ImageView
+        android:id="@+id/photo_preview_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        tools:ignore="ContentDescription" />
+
+    <!-- Full-Screen Mode and Option Selection overlay -->
+    <LinearLayout
+        android:id="@+id/layout_selection_screen"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:background="@drawable/selection_background"
+        android:padding="24dp"
+        android:gravity="center"
+        android:clickable="true"
+        android:focusable="true">
+
+        <!-- Title of the App -->
+        <TextView
+            android:id="@+id/tv_selection_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="ToddlerCam 📸"
+            android:textColor="#FF4081"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <TextView
+            android:id="@+id/tv_selection_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Play, Snap &amp; Learn!"
+            android:textColor="#5C6BC0"
+            android:textSize="18sp"
+            android:layout_marginBottom="48dp"
+            android:gravity="center" />
+
+        <!-- 1. Mode Selection Container (Seasons or Animals) -->
+        <LinearLayout
+            android:id="@+id/container_mode_selection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
+
+            <LinearLayout
+                android:id="@+id/btn_mode_seasons"
+                android:layout_width="match_parent"
+                android:layout_height="140dp"
+                android:background="@drawable/card_gradient_seasons"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:layout_marginBottom="24dp"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🌸 Seasons 🍂"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:textStyle="bold"
+                    android:clickable="false"
+                    android:focusable="false" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Spring, Summer, Autumn, Winter"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:layout_marginTop="8dp"
+                    android:clickable="false"
+                    android:focusable="false" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/btn_mode_animals"
+                android:layout_width="match_parent"
+                android:layout_height="140dp"
+                android:background="@drawable/card_gradient_animals"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:clickable="true"
+                android:focusable="true">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🐶 Animals 🦆"
+                    android:textColor="#FFFFFF"
+                    android:textSize="28sp"
+                    android:textStyle="bold"
+                    android:clickable="false"
+                    android:focusable="false" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Cat, Dog, Bird, Cow, Duck"
+                    android:textColor="#FFFFFF"
+                    android:textSize="14sp"
+                    android:layout_marginTop="8dp"
+                    android:clickable="false"
+                    android:focusable="false" />
+            </LinearLayout>
+
+            <!-- Exit Button on Main Selection Page -->
+            <TextView
+                android:id="@+id/btn_exit_app_main"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:layout_marginTop="32dp"
+                android:text="❌ Exit App"
+                android:textColor="#F44336"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:padding="12dp"
+                android:clickable="true"
+                android:focusable="true"/>
+        </LinearLayout>
+
+        <!-- 2. Sub-Option Selection Container (Grid of Options) -->
+        <LinearLayout
+            android:id="@+id/container_sub_selection"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone"
+            android:gravity="center">
+
+            <TextView
+                android:id="@+id/tv_sub_selection_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Choose One:"
+                android:textColor="#3F51B5"
+                android:textSize="24sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="24dp" />
+
+            <!-- Options Grid / List -->
+            <LinearLayout
+                android:id="@+id/layout_options_grid"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginBottom="32dp">
+
+                <!-- Row 1 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="16dp">
+
+                    <TextView
+                        android:id="@+id/btn_option_1"
+                        android:layout_width="0dp"
+                        android:layout_height="64dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/card_sub_option"
+                        android:gravity="center"
+                        android:textColor="#333333"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+
+                    <TextView
+                        android:id="@+id/btn_option_2"
+                        android:layout_width="0dp"
+                        android:layout_height="64dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/card_sub_option"
+                        android:gravity="center"
+                        android:textColor="#333333"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginStart="8dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+                </LinearLayout>
+
+                <!-- Row 2 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="16dp">
+
+                    <TextView
+                        android:id="@+id/btn_option_3"
+                        android:layout_width="0dp"
+                        android:layout_height="64dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/card_sub_option"
+                        android:gravity="center"
+                        android:textColor="#333333"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginEnd="8dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+
+                    <TextView
+                        android:id="@+id/btn_option_4"
+                        android:layout_width="0dp"
+                        android:layout_height="64dp"
+                        android:layout_weight="1"
+                        android:background="@drawable/card_sub_option"
+                        android:gravity="center"
+                        android:textColor="#333333"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:layout_marginStart="8dp"
+                        android:clickable="true"
+                        android:focusable="true"/>
+                </LinearLayout>
+
+                <!-- Row 3 -->
+                <LinearLayout
+                    android:id="@+id/layout_option_row_3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center">
+
+                    <TextView
+                        android:id="@+id/btn_option_5"
+                        android:layout_width="160dp"
+                        android:layout_height="64dp"
+                        android:background="@drawable/card_sub_option"
+                        android:gravity="center"
+                        android:textColor="#333333"
+                        android:textSize="20sp"
+                        android:textStyle="bold"
+                        android:clickable="true"
+                        android:focusable="true"/>
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Bottom Navigation Bar for Sub-Selection Screen -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center">
+
+                <TextView
+                    android:id="@+id/btn_back_to_modes"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="◀ Go Back"
+                    android:textColor="#5C6BC0"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:padding="12dp"
+                    android:layout_marginEnd="16dp"
+                    android:clickable="true"
+                    android:focusable="true"/>
+
+                <TextView
+                    android:id="@+id/btn_exit_app_sub"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="❌ Exit App"
+                    android:textColor="#F44336"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:padding="12dp"
+                    android:layout_marginStart="16dp"
+                    android:clickable="true"
+                    android:focusable="true"/>
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
 
 </FrameLayout>

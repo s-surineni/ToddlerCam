@@ -62,11 +62,50 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Color
+import android.graphics.Typeface
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.media.ExifInterface
 
 /**
  * Main Screen - Camera app with circle gesture to exit
  */
 class MainActivity : AppCompatActivity() {
+
+  enum class Mode { NONE, SEASONS, ANIMALS }
+  enum class Season { NONE, SPRING, SUMMER, AUTUMN, WINTER }
+  enum class Animal { NONE, CAT, DOG, BIRD, COW, DUCK }
+
+  private var currentMode = Mode.NONE
+  private var currentSeason = Season.NONE
+  private var currentAnimal = Animal.NONE
+
+  private lateinit var themeOverlayView: ThemeOverlayView
+  private lateinit var tvCameraBanner: TextView
+  private lateinit var btnChangeMode: TextView
+  private lateinit var layoutSelectionScreen: View
+  private lateinit var containerModeSelection: View
+  private lateinit var containerSubSelection: View
+  private lateinit var tvSubSelectionTitle: TextView
+  private lateinit var btnBackToModes: View
+  private lateinit var layoutOptionRow3: View
+
+  private lateinit var btnOption1: TextView
+  private lateinit var btnOption2: TextView
+  private lateinit var btnOption3: TextView
+  private lateinit var btnOption4: TextView
+  private lateinit var btnOption5: TextView
+  private lateinit var btnExitAppMain: View
+  private lateinit var btnExitAppSub: View
 
   private lateinit var previewView: PreviewView
   private lateinit var circleDetectionView: CircleDetectionView
@@ -97,6 +136,34 @@ class MainActivity : AppCompatActivity() {
     photoPreviewView = findViewById(R.id.photo_preview_view)
     cameraExecutor = Executors.newSingleThreadExecutor()
 
+    // Bind selection views
+    tvCameraBanner = findViewById(R.id.tv_camera_banner)
+    btnChangeMode = findViewById(R.id.btn_change_mode)
+    layoutSelectionScreen = findViewById(R.id.layout_selection_screen)
+    containerModeSelection = findViewById(R.id.container_mode_selection)
+    containerSubSelection = findViewById(R.id.container_sub_selection)
+    tvSubSelectionTitle = findViewById(R.id.tv_sub_selection_title)
+    btnBackToModes = findViewById(R.id.btn_back_to_modes)
+    layoutOptionRow3 = findViewById(R.id.layout_option_row_3)
+
+    btnOption1 = findViewById(R.id.btn_option_1)
+    btnOption2 = findViewById(R.id.btn_option_2)
+    btnOption3 = findViewById(R.id.btn_option_3)
+    btnOption4 = findViewById(R.id.btn_option_4)
+    btnOption5 = findViewById(R.id.btn_option_5)
+    btnExitAppMain = findViewById(R.id.btn_exit_app_main)
+    btnExitAppSub = findViewById(R.id.btn_exit_app_sub)
+
+    // Instantiate and add the custom overlay drawing view
+    themeOverlayView = ThemeOverlayView(this)
+    findViewById<FrameLayout>(R.id.layout_decorations_overlay).addView(themeOverlayView)
+
+    // Set up menu clicks
+    setupMenuClicks()
+
+    // Show selection screen by default
+    showSelectionScreen()
+
     // Keep screen on
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
@@ -107,14 +174,11 @@ class MainActivity : AppCompatActivity() {
       }
     })
 
-    // Set up circle detection callback to exit app
+    // Set up circle detection callback to return to selection screen
     circleDetectionView.setCircleDetectionCallback {
-      try {
-        stopLockTask()
-      } catch (e: Exception) {
-        // Ignore
+      runOnUiThread {
+        showSelectionScreen()
       }
-      finish() // Close the app
     }
 
     // Set up tap callback to take a photo
@@ -309,6 +373,9 @@ class MainActivity : AppCompatActivity() {
           )
 
           uriToLoad?.let { uri ->
+            // Add decorations before showing preview and notifying gallery
+            addDecorationsToSavedPhoto(uri)
+
             try {
               contentResolver.notifyChange(uri, null)
             } catch (e: Exception) {
@@ -342,5 +409,408 @@ class MainActivity : AppCompatActivity() {
         }
       }
     )
+  }
+
+  private fun setupMenuClicks() {
+    findViewById<View>(R.id.btn_mode_seasons).setOnClickListener {
+      selectMode(Mode.SEASONS)
+    }
+    findViewById<View>(R.id.btn_mode_animals).setOnClickListener {
+      selectMode(Mode.ANIMALS)
+    }
+    btnBackToModes.setOnClickListener {
+      goBackToModes()
+    }
+    btnChangeMode.setOnClickListener {
+      showSelectionScreen()
+    }
+
+    val exitClickListener = View.OnClickListener {
+      try {
+        stopLockTask()
+      } catch (e: Exception) {
+        // Ignore
+      }
+      finish()
+    }
+    btnExitAppMain.setOnClickListener(exitClickListener)
+    btnExitAppSub.setOnClickListener(exitClickListener)
+
+    btnOption1.setOnClickListener { handleOptionClick(1) }
+    btnOption2.setOnClickListener { handleOptionClick(2) }
+    btnOption3.setOnClickListener { handleOptionClick(3) }
+    btnOption4.setOnClickListener { handleOptionClick(4) }
+    btnOption5.setOnClickListener { handleOptionClick(5) }
+  }
+
+  private fun selectMode(mode: Mode) {
+    currentMode = mode
+    containerModeSelection.visibility = View.GONE
+    containerSubSelection.visibility = View.VISIBLE
+
+    if (mode == Mode.SEASONS) {
+      tvSubSelectionTitle.text = "Choose a Season:"
+      btnOption1.text = "🌸 Spring"
+      btnOption2.text = "☀️ Summer"
+      btnOption3.text = "🍂 Autumn"
+      btnOption4.text = "❄️ Winter"
+      layoutOptionRow3.visibility = View.GONE
+    } else if (mode == Mode.ANIMALS) {
+      tvSubSelectionTitle.text = "Choose an Animal:"
+      btnOption1.text = "🐱 Cat"
+      btnOption2.text = "🐶 Dog"
+      btnOption3.text = "🐦 Bird"
+      btnOption4.text = "🐮 Cow"
+      btnOption5.text = "🦆 Duck"
+      layoutOptionRow3.visibility = View.VISIBLE
+    }
+  }
+
+  private fun goBackToModes() {
+    currentMode = Mode.NONE
+    containerSubSelection.visibility = View.GONE
+    containerModeSelection.visibility = View.VISIBLE
+  }
+
+  private fun handleOptionClick(index: Int) {
+    if (currentMode == Mode.SEASONS) {
+      currentSeason = when (index) {
+        1 -> Season.SPRING
+        2 -> Season.SUMMER
+        3 -> Season.AUTUMN
+        4 -> Season.WINTER
+        else -> Season.NONE
+      }
+    } else if (currentMode == Mode.ANIMALS) {
+      currentAnimal = when (index) {
+        1 -> Animal.CAT
+        2 -> Animal.DOG
+        3 -> Animal.BIRD
+        4 -> Animal.COW
+        5 -> Animal.DUCK
+        else -> Animal.NONE
+      }
+    }
+
+    startPlaying()
+  }
+
+  private fun startPlaying() {
+    layoutSelectionScreen.visibility = View.GONE
+    tvCameraBanner.text = getBannerText()
+    tvCameraBanner.visibility = View.VISIBLE
+    btnChangeMode.visibility = View.VISIBLE
+    
+    // Enable circle exit drawing
+    circleDetectionView.isEnabled = true
+    
+    // Force overlay to redraw
+    themeOverlayView.invalidate()
+  }
+
+  private fun showSelectionScreen() {
+    // Reset selections
+    currentMode = Mode.NONE
+    currentSeason = Season.NONE
+    currentAnimal = Animal.NONE
+
+    layoutSelectionScreen.visibility = View.VISIBLE
+    containerSubSelection.visibility = View.GONE
+    containerModeSelection.visibility = View.VISIBLE
+    tvCameraBanner.visibility = View.GONE
+    btnChangeMode.visibility = View.GONE
+
+    // Disable exit drawing when selection menu is visible
+    circleDetectionView.isEnabled = false
+
+    // Clear and invalidate decorations overlay
+    themeOverlayView.invalidate()
+  }
+
+  private fun getBannerText(): String {
+    return when (currentMode) {
+      Mode.SEASONS -> {
+        when (currentSeason) {
+          Season.SPRING -> "🌸 SPRING 🌸"
+          Season.SUMMER -> "☀️ SUMMER ☀️"
+          Season.AUTUMN -> "🍂 AUTUMN 🍂"
+          Season.WINTER -> "❄️ WINTER ❄️"
+          else -> ""
+        }
+      }
+      Mode.ANIMALS -> {
+        when (currentAnimal) {
+          Animal.CAT -> "🐱 CAT 🐱"
+          Animal.DOG -> "🐶 DOG 🐶"
+          Animal.BIRD -> "🐦 BIRD 🐦"
+          Animal.COW -> "🐮 COW 🐮"
+          Animal.DUCK -> "🦆 DUCK 🦆"
+          else -> ""
+        }
+      }
+      else -> ""
+    }
+  }
+
+  private fun drawDecorations(canvas: Canvas, w: Float, h: Float, isForSavedPhoto: Boolean) {
+    val paint = Paint().apply {
+      isAntiAlias = true
+      textAlign = Paint.Align.CENTER
+    }
+
+    // 1. Draw full screen filters and detailed weather effects based on season
+    if (currentMode == Mode.SEASONS) {
+      when (currentSeason) {
+        Season.SPRING -> {
+          // Soft pink spring tint
+          val springFilter = Paint().apply {
+            color = 0x12FFC0CB.toInt() // Pink tint
+            style = Paint.Style.FILL
+          }
+          canvas.drawRect(0f, 0f, w, h, springFilter)
+
+          // Falling blossom petals
+          val petalPaint = Paint().apply {
+            color = 0xAAFFB7C5.toInt() // Cherry blossom pink
+            style = Paint.Style.FILL
+            isAntiAlias = true
+          }
+          val numPetals = 15
+          for (i in 0 until numPetals) {
+            val rand = if (isForSavedPhoto) java.util.Random((i * 9999).toLong()) else java.util.Random()
+            val px = rand.nextFloat() * w
+            val py = rand.nextFloat() * h
+            val rx = w * 0.015f + rand.nextFloat() * (w * 0.02f)
+            val ry = rx * 0.6f
+            canvas.save()
+            canvas.translate(px, py)
+            canvas.rotate(rand.nextFloat() * 360f)
+            val rect = RectF(-rx, -ry, rx, ry)
+            canvas.drawOval(rect, petalPaint)
+            canvas.restore()
+          }
+        }
+        Season.SUMMER -> {
+          // Warm sunny golden/yellow tint
+          val sunnyFilter = Paint().apply {
+            color = 0x18FFD700.toInt() // Subtle transparent gold
+            style = Paint.Style.FILL
+          }
+          canvas.drawRect(0f, 0f, w, h, sunnyFilter)
+
+          // Draw a soft glowing sun in the top right corner
+          val sunPaint = Paint().apply {
+            color = 0x33FF9800.toInt() // Glowing orange
+            style = Paint.Style.FILL
+            isAntiAlias = true
+          }
+          canvas.drawCircle(w * 0.9f, h * 0.1f, w * 0.25f, sunPaint)
+          sunPaint.color = 0x44FFEB3B.toInt() // Glowing yellow core
+          canvas.drawCircle(w * 0.9f, h * 0.1f, w * 0.15f, sunPaint)
+        }
+        Season.AUTUMN -> {
+          // Cool rainy blue/gray tint
+          val rainyFilter = Paint().apply {
+            color = 0x180000FF.toInt() // Cool blue tint
+            style = Paint.Style.FILL
+          }
+          canvas.drawRect(0f, 0f, w, h, rainyFilter)
+
+          // Falling raindrops (slanted white lines)
+          val rainPaint = Paint().apply {
+            color = 0x66FFFFFF.toInt() // Semi-transparent white
+            strokeWidth = w * 0.005f
+            style = Paint.Style.STROKE
+            isAntiAlias = true
+          }
+          val numRaindrops = 30
+          for (i in 0 until numRaindrops) {
+            val rand = if (isForSavedPhoto) java.util.Random((i * 1234).toLong()) else java.util.Random()
+            val rx = rand.nextFloat() * w
+            val ry = rand.nextFloat() * h
+            val length = h * 0.06f
+            canvas.drawLine(rx, ry, rx - length * 0.15f, ry + length, rainPaint)
+          }
+        }
+        Season.WINTER -> {
+          // Cold snowy white tint
+          val winterFilter = Paint().apply {
+            color = 0x12FFFFFF.toInt() // Subtle white/snowy tint
+            style = Paint.Style.FILL
+          }
+          canvas.drawRect(0f, 0f, w, h, winterFilter)
+
+          // Falling snowflakes (soft white circles)
+          val snowPaint = Paint().apply {
+            color = Color.WHITE
+            style = Paint.Style.FILL
+            isAntiAlias = true
+          }
+          val numSnowflakes = 25
+          for (i in 0 until numSnowflakes) {
+            val rand = if (isForSavedPhoto) java.util.Random((i * 5678).toLong()) else java.util.Random()
+            val sx = rand.nextFloat() * w
+            val sy = rand.nextFloat() * h
+            val radius = w * 0.008f + rand.nextFloat() * (w * 0.012f)
+            canvas.drawCircle(sx, sy, radius, snowPaint)
+          }
+        }
+        else -> {}
+      }
+    }
+
+    // 2. Draw border emojis & animal stickers
+    if (currentMode == Mode.SEASONS) {
+      val emojis = when (currentSeason) {
+        Season.SPRING -> listOf("🌸", "🌷", "🍃", "🦋")
+        Season.SUMMER -> listOf("☀️", "🌻", "🍦", "🌊")
+        Season.AUTUMN -> listOf("🍂", "🍁", "🌧️", "💧")
+        Season.WINTER -> listOf("❄️", "⛄", "❄️", "🧤")
+        else -> emptyList()
+      }
+
+      if (emojis.isNotEmpty()) {
+        val size = w * 0.08f // Emoji size is 8% of screen width
+        paint.textSize = size
+
+        // Top Row
+        canvas.drawText(emojis[0], w * 0.15f, h * 0.12f, paint)
+        canvas.drawText(emojis[1], w * 0.85f, h * 0.12f, paint)
+
+        // Bottom Row
+        canvas.drawText(emojis[2], w * 0.20f, h * 0.90f, paint)
+        canvas.drawText(emojis[3], w * 0.80f, h * 0.90f, paint)
+
+        // Left/Right sides
+        canvas.drawText(emojis[0], w * 0.10f, h * 0.50f, paint)
+        canvas.drawText(emojis[1], w * 0.90f, h * 0.50f, paint)
+      }
+    } else if (currentMode == Mode.ANIMALS) {
+      val (animalEmoji, accentEmoji) = when (currentAnimal) {
+        Animal.CAT -> Pair("🐱", "🐾")
+        Animal.DOG -> Pair("🐶", "🐾")
+        Animal.BIRD -> Pair("🐦", "🌿")
+        Animal.COW -> Pair("🐮", "🌾")
+        Animal.DUCK -> Pair("🦆", "🌊")
+        else -> Pair("", "")
+      }
+
+      if (animalEmoji.isNotEmpty()) {
+        // Draw the large animal sticker in the bottom right corner
+        val stickerSize = w * 0.28f // Sticker size is 28% of screen width
+        paint.textSize = stickerSize
+        canvas.drawText(animalEmoji, w * 0.78f, h * 0.88f, paint)
+
+        // Draw the cute accent sticker in the bottom left corner
+        if (accentEmoji.isNotEmpty()) {
+          val accentSize = w * 0.15f // Accent size is 15% of screen width
+          paint.textSize = accentSize
+          canvas.drawText(accentEmoji, w * 0.22f, h * 0.88f, paint)
+        }
+      }
+    }
+
+    // If saving the photo, we also draw the header banner text
+    if (isForSavedPhoto) {
+      val bannerText = getBannerText()
+      if (bannerText.isNotEmpty()) {
+        val bannerHeight = h * 0.08f
+        val bannerWidth = w * 0.6f
+        val left = (w - bannerWidth) / 2
+        val top = h * 0.03f
+        val right = left + bannerWidth
+        val bottom = top + bannerHeight
+
+        val rectPaint = Paint().apply {
+          color = 0x99000000.toInt()
+          style = Paint.Style.FILL
+        }
+        val rect = RectF(left, top, right, bottom)
+        canvas.drawRoundRect(rect, bannerHeight / 2, bannerHeight / 2, rectPaint)
+
+        // Draw text
+        val textPaint = Paint().apply {
+          color = Color.WHITE
+          textSize = bannerHeight * 0.5f
+          isAntiAlias = true
+          textAlign = Paint.Align.CENTER
+          typeface = Typeface.DEFAULT_BOLD
+        }
+        val textY = top + bannerHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2
+        canvas.drawText(bannerText, w / 2, textY, textPaint)
+      }
+    }
+  }
+
+  private fun addDecorationsToSavedPhoto(uri: Uri) {
+    try {
+      // 1. Load the original bitmap
+      val inputStream = contentResolver.openInputStream(uri) ?: return
+      val originalBitmap = BitmapFactory.decodeStream(inputStream)
+      inputStream.close()
+
+      if (originalBitmap == null) return
+
+      // 2. Rotate bitmap if necessary using EXIF data
+      val rotatedBitmap = rotateBitmapFromUri(this, uri, originalBitmap)
+
+      // 3. Create a mutable copy of the bitmap
+      val mutableBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, true)
+      
+      // 4. Draw decorations on the canvas
+      val canvas = Canvas(mutableBitmap)
+      drawDecorations(canvas, mutableBitmap.width.toFloat(), mutableBitmap.height.toFloat(), isForSavedPhoto = true)
+
+      // 5. Save the updated bitmap back to the same Uri
+      val outputStream = contentResolver.openOutputStream(uri) ?: return
+      mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+      outputStream.close()
+
+      // Recycle bitmaps to free memory
+      if (rotatedBitmap != originalBitmap) {
+        originalBitmap.recycle()
+      }
+      rotatedBitmap.recycle()
+      mutableBitmap.recycle()
+    } catch (e: Exception) {
+      android.util.Log.e("ToddlerCam", "Error decorating photo: ${e.message}", e)
+    }
+  }
+
+  private fun rotateBitmapFromUri(context: Context, uri: Uri, bitmap: Bitmap): Bitmap {
+    try {
+      val inputStream = context.contentResolver.openInputStream(uri)
+      val orientation = inputStream?.use { stream ->
+        ExifInterface(stream).getAttributeInt(
+          ExifInterface.TAG_ORIENTATION,
+          ExifInterface.ORIENTATION_NORMAL
+        )
+      } ?: ExifInterface.ORIENTATION_NORMAL
+
+      val rotationDegrees = when (orientation) {
+        ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+        ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+        ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+        else -> 0f
+      }
+
+      if (rotationDegrees == 0f) return bitmap
+
+      val matrix = Matrix().apply { postRotate(rotationDegrees) }
+      val rotated = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+      if (rotated != bitmap) {
+        bitmap.recycle()
+      }
+      return rotated
+    } catch (e: Exception) {
+      return bitmap
+    }
+  }
+
+  inner class ThemeOverlayView(context: Context) : View(context) {
+    override fun onDraw(canvas: Canvas) {
+      super.onDraw(canvas)
+      drawDecorations(canvas, width.toFloat(), height.toFloat(), isForSavedPhoto = false)
+    }
   }
 }

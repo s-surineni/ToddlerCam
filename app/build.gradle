@@ -62,4 +62,7 @@ dependencies {
   implementation "androidx.camera:camera-lifecycle:${camerax_version}"
   implementation "androidx.camera:camera-view:${camerax_version}"
 
+  // GPUImage for photo effects
+  implementation 'jp.co.cyberagent.android:gpuimage:2.1.0'
+
 }

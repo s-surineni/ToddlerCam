@@ -170,7 +170,7 @@ class MainActivity : AppCompatActivity() {
       inputStream?.close()
 
       // Apply a random fun effect for the preview
-      val (effectedBitmap, effectName) = PhotoEffects.applyRandomEffect(originalBitmap)
+      val (effectedBitmap, effectName) = PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap)
       photoPreview.setImageBitmap(effectedBitmap)
       photoPreview.visibility = View.VISIBLE
 

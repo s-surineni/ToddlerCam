@@ -53,7 +53,14 @@ dependencies {
   // SplashScreen compat library
   implementation 'androidx.core:core-splashscreen:1.0.0-beta01'
 
-  // TUTORIAL DEPENDENCIES HERE
+  // Camera dependencies
+  implementation 'androidx.camera:camera-core:1.2.1'
+  implementation 'androidx.camera:camera-camera2:1.2.1'
+  implementation 'androidx.camera:camera-lifecycle:1.2.1'
+  implementation 'androidx.camera:camera-view:1.2.1'
+
+  // Permissions
+  implementation 'androidx.activity:activity-ktx:1.7.0'
 
 
 }

@@ -34,13 +34,34 @@
 
 package com.toddlerapps.simplecam
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.core.content.ContextCompat
 
 /**
  * Main Screen
  */
 class MainActivity : AppCompatActivity() {
+
+  private lateinit var previewView: PreviewView
+
+  private val requestPermissionLauncher =
+    registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
+      if (isGranted) {
+        startCamera()
+      } else {
+        Toast.makeText(this, "Camera permission is required to use this app", Toast.LENGTH_LONG).show()
+        finish()
+      }
+    }
 
   override fun onCreate(savedInstanceState: Bundle?) {
     // Switch to AppTheme for displaying the activity
@@ -49,8 +70,33 @@ class MainActivity : AppCompatActivity() {
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
 
-    // Your code
+    previewView = findViewById(R.id.previewView)
 
+    if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+        == PackageManager.PERMISSION_GRANTED) {
+      startCamera()
+    } else {
+      requestPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+  }
 
+  private fun startCamera() {
+    val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
+    cameraProviderFuture.addListener({
+      val cameraProvider = cameraProviderFuture.get()
+
+      val preview = Preview.Builder().build().also {
+        it.setSurfaceProvider(previewView.surfaceProvider)
+      }
+
+      val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+      try {
+        cameraProvider.unbindAll()
+        cameraProvider.bindToLifecycle(this, cameraSelector, preview)
+      } catch (e: Exception) {
+        Toast.makeText(this, "Camera initialization failed", Toast.LENGTH_SHORT).show()
+      }
+    }, ContextCompat.getMainExecutor(this))
   }
 }

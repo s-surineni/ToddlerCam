@@ -166,10 +166,15 @@ class MainActivity : AppCompatActivity() {
     previewUri = uri
     try {
       val inputStream = contentResolver.openInputStream(uri)
-      val bitmap = BitmapFactory.decodeStream(inputStream)
+      val originalBitmap = BitmapFactory.decodeStream(inputStream)
       inputStream?.close()
-      photoPreview.setImageBitmap(bitmap)
+
+      // Apply a random fun effect for the preview
+      val (effectedBitmap, effectName) = PhotoEffects.applyRandomEffect(originalBitmap)
+      photoPreview.setImageBitmap(effectedBitmap)
       photoPreview.visibility = View.VISIBLE
+
+      Toast.makeText(this, "✨ $effectName ✨", Toast.LENGTH_SHORT).show()
 
       // Auto-dismiss after 3 seconds
       photoPreview.postDelayed({

@@ -32,6 +32,12 @@ class CircleGestureView @JvmOverloads constructor(
     color = 0x40FFFFFF // Semi-transparent white for visual feedback
   }
 
+  init {
+    isClickable = true
+    isFocusable = true
+    isFocusableInTouchMode = true
+  }
+
   @SuppressLint("ClickableViewAccessibility")
   override fun onTouchEvent(event: MotionEvent): Boolean {
     when (event.action) {
@@ -40,6 +46,7 @@ class CircleGestureView @JvmOverloads constructor(
         path.reset()
         path.moveTo(event.x, event.y)
         touchPoints.add(Pair(event.x, event.y))
+        parent?.requestDisallowInterceptTouchEvent(true)
       }
       MotionEvent.ACTION_MOVE -> {
         path.lineTo(event.x, event.y)
@@ -73,9 +80,9 @@ class CircleGestureView @JvmOverloads constructor(
    * Determines if the collected touch points form a roughly circular shape.
    * Uses these heuristics:
    * 1. Sufficient number of points
-   * 2. Start and end points are close together
-   * 3. The path has enough curvature (deviates from a straight line)
-   * 4. The overall shape is roughly symmetric
+   * 2. Start and end points are close together (circle closes)
+   * 3. The path has a minimum length
+   * 4. Points are roughly equidistant from the center
    */
   private fun isCircle(): Boolean {
     if (touchPoints.size < 15) return false
@@ -87,10 +94,10 @@ class CircleGestureView @JvmOverloads constructor(
     val closureDistance = distance(start, end)
     val pathLength = totalPathLength()
 
-    if (pathLength < 200f) return false // Too short to be a meaningful circle
+    if (pathLength < 150f) return false // Too short to be a meaningful circle
 
     // The closure distance should be small relative to total path length
-    if (closureDistance > pathLength * 0.25f) return false
+    if (closureDistance > pathLength * 0.30f) return false
 
     // Calculate the center and average radius
     val centerX = touchPoints.map { it.first }.average().toFloat()
@@ -99,12 +106,12 @@ class CircleGestureView @JvmOverloads constructor(
 
     val avgRadius = touchPoints.map { distance(it, center) }.average().toFloat()
 
-    if (avgRadius < 30f) return false // Too small
+    if (avgRadius < 20f) return false // Too small
 
     // Check that most points are roughly the same distance from center (circular shape)
     val variance = touchPoints.map { abs(distance(it, center) - avgRadius) / avgRadius }.average()
 
-    return variance < 0.35 // Points should be within ~35% of the average radius
+    return variance < 0.40 // Points should be within ~40% of the average radius
   }
 
   private fun distance(a: Pair<Float, Float>, b: Pair<Float, Float>): Float {

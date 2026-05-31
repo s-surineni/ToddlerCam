@@ -90,6 +90,9 @@ class MainActivity : AppCompatActivity() {
       showExitDialog()
     }
 
+    // Enter lock task (kiosk) mode to prevent navigation bar access
+    startLockTask()
+
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         == PackageManager.PERMISSION_GRANTED) {
       startCamera()
@@ -107,6 +110,10 @@ class MainActivity : AppCompatActivity() {
     super.onWindowFocusChanged(hasFocus)
     if (hasFocus) {
       enterImmersiveMode()
+      // Re-enter lock task mode in case it was exited
+      try {
+        startLockTask()
+      } catch (_: Exception) { }
     }
   }
 

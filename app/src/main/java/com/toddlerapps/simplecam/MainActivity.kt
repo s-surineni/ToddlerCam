@@ -49,6 +49,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -59,6 +60,7 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import com.airbnb.lottie.LottieAnimationView
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -73,6 +75,8 @@ class MainActivity : AppCompatActivity() {
   private lateinit var previewView: PreviewView
   private lateinit var circleGestureView: CircleGestureView
   private lateinit var photoPreview: ImageView
+  private lateinit var effectNameText: TextView
+  private lateinit var confettiAnimation: LottieAnimationView
   private var imageCapture: ImageCapture? = null
   private var previewUri: Uri? = null
   private lateinit var shutterSound: MediaActionSound
@@ -101,6 +105,8 @@ class MainActivity : AppCompatActivity() {
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
     photoPreview = findViewById(R.id.photoPreview)
+    effectNameText = findViewById(R.id.effectNameText)
+    confettiAnimation = findViewById(R.id.confettiAnimation)
 
     // Tap anywhere to take a photo (only when preview is not showing)
     circleGestureView.onTapDetected = {
@@ -170,17 +176,26 @@ class MainActivity : AppCompatActivity() {
       val originalBitmap = BitmapFactory.decodeStream(inputStream)
       inputStream?.close()
 
-      // Apply a random fun effect for the preview
-      val (effectedBitmap, effectName) = PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap)
-      photoPreview.setImageBitmap(effectedBitmap)
-      photoPreview.visibility = View.VISIBLE
+      // Apply a random fun effect (may use face detection)
+      PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap) { effectedBitmap, effectName ->
+        runOnUiThread {
+          photoPreview.setImageBitmap(effectedBitmap)
+          photoPreview.visibility = View.VISIBLE
 
-      Toast.makeText(this, "✨ $effectName ✨", Toast.LENGTH_SHORT).show()
+          // Show effect name
+          effectNameText.text = "✨ $effectName ✨"
+          effectNameText.visibility = View.VISIBLE
 
-      // Auto-dismiss after 3 seconds
-      photoPreview.postDelayed({
-        hidePhotoPreview()
-      }, 3000)
+          // Play Lottie confetti animation
+          confettiAnimation.visibility = View.VISIBLE
+          confettiAnimation.playAnimation()
+
+          // Auto-dismiss after 3 seconds
+          photoPreview.postDelayed({
+            hidePhotoPreview()
+          }, 3000)
+        }
+      }
     } catch (e: Exception) {
       // If preview fails, just continue
     }
@@ -189,6 +204,9 @@ class MainActivity : AppCompatActivity() {
   private fun hidePhotoPreview() {
     photoPreview.visibility = View.GONE
     photoPreview.setImageDrawable(null)
+    effectNameText.visibility = View.GONE
+    confettiAnimation.visibility = View.GONE
+    confettiAnimation.cancelAnimation()
     previewUri = null
   }
 

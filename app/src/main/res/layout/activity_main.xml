@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -15,12 +16,39 @@
       android:layout_width="match_parent"
       android:layout_height="match_parent" />
 
+  <!-- Photo preview overlay -->
   <ImageView
       android:id="@+id/photoPreview"
       android:layout_width="match_parent"
       android:layout_height="match_parent"
       android:background="#000000"
       android:scaleType="fitCenter"
+      android:visibility="gone" />
+
+  <!-- Lottie confetti animation overlay -->
+  <com.airbnb.lottie.LottieAnimationView
+      android:id="@+id/confettiAnimation"
+      android:layout_width="match_parent"
+      android:layout_height="match_parent"
+      android:layout_gravity="center"
+      android:visibility="gone"
+      app:lottie_autoPlay="false"
+      app:lottie_loop="true"
+      app:lottie_rawRes="@raw/confetti" />
+
+  <!-- Effect name display -->
+  <TextView
+      android:id="@+id/effectNameText"
+      android:layout_width="wrap_content"
+      android:layout_height="wrap_content"
+      android:layout_gravity="bottom|center_horizontal"
+      android:layout_marginBottom="40dp"
+      android:background="#88000000"
+      android:paddingHorizontal="24dp"
+      android:paddingVertical="12dp"
+      android:textColor="#FFFFFF"
+      android:textSize="24sp"
+      android:textStyle="bold"
       android:visibility="gone" />
 
 </FrameLayout>

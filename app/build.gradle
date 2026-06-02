@@ -65,4 +65,10 @@ dependencies {
   // GPUImage for photo effects
   implementation 'jp.co.cyberagent.android:gpuimage:2.1.0'
 
+  // Lottie for animated stickers
+  implementation 'com.airbnb.android:lottie:6.3.0'
+
+  // ML Kit Face Detection for face-based stickers
+  implementation 'com.google.mlkit:face-detection:16.1.6'
+
 }

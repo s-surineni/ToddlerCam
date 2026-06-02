@@ -38,9 +38,6 @@ import android.Manifest
 import android.app.AlertDialog
 import android.content.ContentValues
 import android.content.pm.PackageManager
-import android.graphics.BitmapFactory
-import android.media.MediaActionSound
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.MediaStore
@@ -48,7 +45,6 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
-import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -65,17 +61,13 @@ import java.util.Locale
 /**
  * Main Screen - Kiosk mode for kids
  * - Tap anywhere to take a photo
- * - Photo preview shows for 3 seconds then returns to camera
  * - Draw an "O" circle gesture to exit the app
  */
 class MainActivity : AppCompatActivity() {
 
   private lateinit var previewView: PreviewView
   private lateinit var circleGestureView: CircleGestureView
-  private lateinit var photoPreview: ImageView
   private var imageCapture: ImageCapture? = null
-  private var previewUri: Uri? = null
-  private lateinit var shutterSound: MediaActionSound
 
   private val requestPermissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -100,25 +92,16 @@ class MainActivity : AppCompatActivity() {
 
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
-    photoPreview = findViewById(R.id.photoPreview)
 
-    // Tap anywhere to take a photo (only when preview is not showing)
+    // Tap anywhere to take a photo
     circleGestureView.onTapDetected = {
-      if (photoPreview.visibility != View.VISIBLE) {
-        takePhoto()
-      }
+      takePhoto()
     }
 
-    // Circle gesture to exit (only when preview is not showing)
+    // Circle gesture to exit
     circleGestureView.onCircleDetected = {
-      if (photoPreview.visibility != View.VISIBLE) {
-        showExitDialog()
-      }
+      showExitDialog()
     }
-
-    // Initialize shutter sound
-    shutterSound = MediaActionSound()
-    shutterSound.load(MediaActionSound.SHUTTER_CLICK)
 
     // Enter lock task (kiosk) mode
     startLockTask()
@@ -163,35 +146,6 @@ class MainActivity : AppCompatActivity() {
       .show()
   }
 
-  private fun showPhotoPreview(uri: Uri) {
-    previewUri = uri
-    try {
-      val inputStream = contentResolver.openInputStream(uri)
-      val originalBitmap = BitmapFactory.decodeStream(inputStream)
-      inputStream?.close()
-
-      // Apply a random fun effect for the preview
-      val (effectedBitmap, effectName) = PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap)
-      photoPreview.setImageBitmap(effectedBitmap)
-      photoPreview.visibility = View.VISIBLE
-
-      Toast.makeText(this, "✨ $effectName ✨", Toast.LENGTH_SHORT).show()
-
-      // Auto-dismiss after 3 seconds
-      photoPreview.postDelayed({
-        hidePhotoPreview()
-      }, 3000)
-    } catch (e: Exception) {
-      // If preview fails, just continue
-    }
-  }
-
-  private fun hidePhotoPreview() {
-    photoPreview.visibility = View.GONE
-    photoPreview.setImageDrawable(null)
-    previewUri = null
-  }
-
   private fun enterImmersiveMode() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       window.insetsController?.let { controller ->
@@ -215,9 +169,11 @@ class MainActivity : AppCompatActivity() {
   private fun takePhoto() {
     val imageCapture = imageCapture ?: return
 
+    // Create timestamp-based filename
     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
     val fileName = "TODDLERCAM_$timestamp"
 
+    // Save to MediaStore (gallery)
     val contentValues = ContentValues().apply {
       put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
       put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
@@ -232,17 +188,12 @@ class MainActivity : AppCompatActivity() {
       contentValues
     ).build()
 
-    // Play shutter sound
-    shutterSound.play(MediaActionSound.SHUTTER_CLICK)
-
     imageCapture.takePicture(
       outputOptions,
       ContextCompat.getMainExecutor(this),
       object : ImageCapture.OnImageSavedCallback {
         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
-          output.savedUri?.let { uri ->
-            showPhotoPreview(uri)
-          }
+          Toast.makeText(this@MainActivity, "Photo saved!", Toast.LENGTH_SHORT).show()
         }
 
         override fun onError(exception: ImageCaptureException) {
@@ -257,10 +208,12 @@ class MainActivity : AppCompatActivity() {
     cameraProviderFuture.addListener({
       val cameraProvider = cameraProviderFuture.get()
 
+      // Preview
       val preview = Preview.Builder().build().also {
         it.setSurfaceProvider(previewView.surfaceProvider)
       }
 
+      // ImageCapture
       imageCapture = ImageCapture.Builder()
         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
         .build()

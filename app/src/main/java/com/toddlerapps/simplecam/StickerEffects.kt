@@ -13,73 +13,73 @@ object StickerEffects {
     // 1. Balloons - colorful balloon emoji
     StickerInfo("Balloons") { canvas, w, h ->
       val emojis = arrayOf("🎈", "🎈", "🎈", "🎈", "🎈", "🎈", "🎈", "🎈")
-      drawEmojiScatter(canvas, w, h, emojis, 12, 35f, 55f)
+      drawEmojiScatter(canvas, w, h, emojis, 10, 80f, 130f)
     },
 
     // 2. Birthday Party - cake, candles, party
     StickerInfo("Birthday Party") { canvas, w, h ->
       val emojis = arrayOf("🎂", "🍰", "🧁", "🎉", "🎁", "🎀", "🎈", "🎵")
-      drawEmojiScatter(canvas, w, h, emojis, 10, 40f, 65f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     },
 
     // 3. Rainbow Magic
     StickerInfo("Rainbow Magic") { canvas, w, h ->
       val emojis = arrayOf("🌈", "⭐", "✨", "💫", "🌟", "🦄", "🦋", "🌸")
-      drawEmojiScatter(canvas, w, h, emojis, 14, 30f, 55f)
+      drawEmojiScatter(canvas, w, h, emojis, 10, 70f, 120f)
     },
 
     // 4. Love Hearts
     StickerInfo("Love Hearts") { canvas, w, h ->
       val emojis = arrayOf("❤️", "💕", "💖", "💗", "💘", "💝", "😍", "🥰")
-      drawEmojiScatter(canvas, w, h, emojis, 12, 35f, 55f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     },
 
     // 5. Ocean Fun
     StickerInfo("Ocean Fun") { canvas, w, h ->
       val emojis = arrayOf("🐠", "🐟", "🐙", "🐚", "🌊", "🐬", "🦈", "🐡")
-      drawEmojiScatter(canvas, w, h, emojis, 10, 40f, 65f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     },
 
     // 6. Nature & Animals
     StickerInfo("Nature") { canvas, w, h ->
       val emojis = arrayOf("🦋", "🐝", "🌻", "🌺", "🍀", "🐛", "🐞", "🌿")
-      drawEmojiScatter(canvas, w, h, emojis, 12, 35f, 55f)
+      drawEmojiScatter(canvas, w, h, emojis, 10, 80f, 130f)
     },
 
     // 7. Space Adventure
     StickerInfo("Space") { canvas, w, h ->
       val emojis = arrayOf("🚀", "🌙", "⭐", "🌍", "👽", "🛸", "🪐", "☄️")
-      drawEmojiScatter(canvas, w, h, emojis, 10, 38f, 60f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     },
 
     // 8. Candy Land
     StickerInfo("Candy Land") { canvas, w, h ->
       val emojis = arrayOf("🍭", "🍬", "🍫", "🍩", "🍪", "🎂", "🧁", "🍰")
-      drawEmojiScatter(canvas, w, h, emojis, 12, 35f, 55f)
+      drawEmojiScatter(canvas, w, h, emojis, 10, 80f, 130f)
     },
 
     // 9. Music & Dance
     StickerInfo("Music") { canvas, w, h ->
       val emojis = arrayOf("🎵", "🎶", "🎤", "🎸", "🥁", "🎺", "🪘", "🪗")
-      drawEmojiScatter(canvas, w, h, emojis, 10, 38f, 58f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     },
 
     // 10. Playground
     StickerInfo("Playground") { canvas, w, h ->
       val emojis = arrayOf("⚽", "🏀", "🎾", "🎯", "🎪", "🎠", "🎡", "🗿")
-      drawEmojiScatter(canvas, w, h, emojis, 10, 40f, 62f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     },
 
     // 11. Flowers Garden
     StickerInfo("Flower Garden") { canvas, w, h ->
       val emojis = arrayOf("🌸", "🌺", "🌹", "🌷", "🌻", "💐", "🌼", "🪻")
-      drawEmojiScatter(canvas, w, h, emojis, 14, 32f, 50f)
+      drawEmojiScatter(canvas, w, h, emojis, 10, 75f, 120f)
     },
 
     // 12. Emoji Explosion
     StickerInfo("Emoji Explosion") { canvas, w, h ->
       val emojis = arrayOf("😀", "😂", "🥳", "😎", "🤩", "😺", "🐶", "🐼")
-      drawEmojiScatter(canvas, w, h, emojis, 10, 40f, 65f)
+      drawEmojiScatter(canvas, w, h, emojis, 9, 80f, 130f)
     }
   )
 

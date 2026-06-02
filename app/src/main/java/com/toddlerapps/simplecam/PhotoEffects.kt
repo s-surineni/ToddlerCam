@@ -167,12 +167,29 @@ object PhotoEffects {
   )
 
   fun applyRandomEffect(context: Context, source: Bitmap): Pair<Bitmap, String> {
-    val effects = createEffects()
-    val effect = effects[Random.nextInt(effects.size)]
-    val gpuImage = GPUImage(context)
-    gpuImage.setImage(source)
-    effect.apply(gpuImage)
-    val result = gpuImage.getBitmapWithFilterApplied()
-    return Pair(result, effect.name)
+    // 50% chance: GPUImage filter, 30% sticker overlay, 20% filter + sticker combined
+    val roll = Random.nextFloat()
+
+    if (roll < 0.5f) {
+      // GPUImage filter only
+      val effect = createEffects()[Random.nextInt(createEffects().size)]
+      val gpuImage = GPUImage(context)
+      gpuImage.setImage(source)
+      effect.apply(gpuImage)
+      val result = gpuImage.getBitmapWithFilterApplied()
+      return Pair(result, effect.name)
+    } else if (roll < 0.8f) {
+      // Sticker overlay only
+      return StickerEffects.applyRandomSticker(source)
+    } else {
+      // GPUImage filter + sticker combined
+      val effect = createEffects()[Random.nextInt(createEffects().size)]
+      val gpuImage = GPUImage(context)
+      gpuImage.setImage(source)
+      effect.apply(gpuImage)
+      val filtered = gpuImage.getBitmapWithFilterApplied()
+      val (stickerBitmap, stickerName) = StickerEffects.applyRandomSticker(filtered)
+      return Pair(stickerBitmap, "${effect.name} + $stickerName")
+    }
   }
 }

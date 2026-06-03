@@ -27,15 +27,15 @@ object FaceStickerHelper {
       paint.style = Paint.Style.FILL
 
       val cx = rect.centerX()
-      val top = rect.top - rect.height() * 0.15f
-      val crownWidth = rect.width() * 0.6f
-      val crownHeight = rect.height() * 0.25f
+      val top = rect.top - rect.height() * 0.25f
+      val crownWidth = rect.width() * 0.8f
+      val crownHeight = rect.height() * 0.4f
 
       val path = android.graphics.Path()
       path.moveTo(cx - crownWidth / 2, top + crownHeight)
       path.lineTo(cx - crownWidth / 2, top)
       path.lineTo(cx - crownWidth / 4, top + crownHeight * 0.6f)
-      path.lineTo(cx, top - crownHeight * 0.1f)
+      path.lineTo(cx, top - crownHeight * 0.2f)
       path.lineTo(cx + crownWidth / 4, top + crownHeight * 0.6f)
       path.lineTo(cx + crownWidth / 2, top)
       path.lineTo(cx + crownWidth / 2, top + crownHeight)
@@ -44,10 +44,10 @@ object FaceStickerHelper {
 
       // Jewels
       paint.color = Color.RED
-      canvas.drawCircle(cx, top + crownHeight * 0.4f, 4f, paint)
+      canvas.drawCircle(cx, top + crownHeight * 0.5f, 8f, paint)
       paint.color = 0xFF0066FF.toInt()
-      canvas.drawCircle(cx - crownWidth / 4, top + crownHeight * 0.5f, 3f, paint)
-      canvas.drawCircle(cx + crownWidth / 4, top + crownHeight * 0.5f, 3f, paint)
+      canvas.drawCircle(cx - crownWidth / 4, top + crownHeight * 0.6f, 6f, paint)
+      canvas.drawCircle(cx + crownWidth / 4, top + crownHeight * 0.6f, 6f, paint)
     },
 
     // Sunglasses
@@ -57,40 +57,40 @@ object FaceStickerHelper {
       paint.style = Paint.Style.FILL
 
       val eyeY = rect.centerY() - rect.height() * 0.05f
-      val eyeSpacing = rect.width() * 0.2f
-      val lensWidth = rect.width() * 0.18f
-      val lensHeight = rect.height() * 0.12f
+      val eyeSpacing = rect.width() * 0.25f
+      val lensWidth = rect.width() * 0.25f
+      val lensHeight = rect.height() * 0.18f
 
       // Left lens
       canvas.drawRoundRect(
         RectF(rect.centerX() - eyeSpacing - lensWidth, eyeY - lensHeight,
               rect.centerX() - eyeSpacing + lensWidth, eyeY + lensHeight),
-        8f, 8f, paint
+        12f, 12f, paint
       )
       // Right lens
       canvas.drawRoundRect(
         RectF(rect.centerX() + eyeSpacing - lensWidth, eyeY - lensHeight,
               rect.centerX() + eyeSpacing + lensWidth, eyeY + lensHeight),
-        8f, 8f, paint
+        12f, 12f, paint
       )
       // Bridge
-      paint.strokeWidth = 4f
+      paint.strokeWidth = 6f
       paint.style = Paint.Style.STROKE
       canvas.drawLine(rect.centerX() - eyeSpacing + lensWidth, eyeY,
                       rect.centerX() + eyeSpacing - lensWidth, eyeY, paint)
       // Temples
       canvas.drawLine(rect.centerX() - eyeSpacing - lensWidth, eyeY,
-                      rect.centerX() - rect.width() * 0.4f, eyeY - 5f, paint)
+                      rect.centerX() - rect.width() * 0.5f, eyeY - 8f, paint)
       canvas.drawLine(rect.centerX() + eyeSpacing + lensWidth, eyeY,
-                      rect.centerX() + rect.width() * 0.4f, eyeY - 5f, paint)
+                      rect.centerX() + rect.width() * 0.5f, eyeY - 8f, paint)
 
       // Lens shine
       paint.color = Color.WHITE
-      paint.alpha = 60
+      paint.alpha = 80
       paint.style = Paint.Style.FILL
       canvas.drawOval(
-        RectF(rect.centerX() - eyeSpacing - lensWidth * 0.3f, eyeY - lensHeight * 0.6f,
-              rect.centerX() - eyeSpacing + lensWidth * 0.3f, eyeY),
+        RectF(rect.centerX() - eyeSpacing - lensWidth * 0.4f, eyeY - lensHeight * 0.7f,
+              rect.centerX() - eyeSpacing + lensWidth * 0.4f, eyeY),
         paint
       )
     },
@@ -101,29 +101,29 @@ object FaceStickerHelper {
       paint.color = 0xFF4A2800.toInt()
       paint.style = Paint.Style.FILL
 
-      val mustacheY = rect.centerY() + rect.height() * 0.15f
-      val mustacheWidth = rect.width() * 0.35f
+      val mustacheY = rect.centerY() + rect.height() * 0.2f
+      val mustacheWidth = rect.width() * 0.45f
 
       val path = android.graphics.Path()
       path.moveTo(rect.centerX(), mustacheY)
       path.cubicTo(
-        rect.centerX() - mustacheWidth * 0.3f, mustacheY - 15f,
-        rect.centerX() - mustacheWidth, mustacheY - 10f,
-        rect.centerX() - mustacheWidth, mustacheY + 5f
+        rect.centerX() - mustacheWidth * 0.3f, mustacheY - 20f,
+        rect.centerX() - mustacheWidth, mustacheY - 15f,
+        rect.centerX() - mustacheWidth, mustacheY + 8f
       )
       path.cubicTo(
-        rect.centerX() - mustacheWidth, mustacheY + 15f,
-        rect.centerX() - mustacheWidth * 0.5f, mustacheY + 12f,
-        rect.centerX(), mustacheY + 3f
+        rect.centerX() - mustacheWidth, mustacheY + 25f,
+        rect.centerX() - mustacheWidth * 0.6f, mustacheY + 20f,
+        rect.centerX(), mustacheY + 5f
       )
       path.cubicTo(
-        rect.centerX() + mustacheWidth * 0.5f, mustacheY + 12f,
-        rect.centerX() + mustacheWidth, mustacheY + 15f,
-        rect.centerX() + mustacheWidth, mustacheY + 5f
+        rect.centerX() + mustacheWidth * 0.6f, mustacheY + 20f,
+        rect.centerX() + mustacheWidth, mustacheY + 25f,
+        rect.centerX() + mustacheWidth, mustacheY + 8f
       )
       path.cubicTo(
-        rect.centerX() + mustacheWidth, mustacheY - 10f,
-        rect.centerX() + mustacheWidth * 0.3f, mustacheY - 15f,
+        rect.centerX() + mustacheWidth, mustacheY - 15f,
+        rect.centerX() + mustacheWidth * 0.3f, mustacheY - 20f,
         rect.centerX(), mustacheY
       )
       path.close()
@@ -137,11 +137,67 @@ object FaceStickerHelper {
       paint.style = Paint.Style.FILL
 
       val eyeY = rect.centerY() - rect.height() * 0.05f
-      val eyeSpacing = rect.width() * 0.2f
-      val starSize = rect.width() * 0.08f
+      val eyeSpacing = rect.width() * 0.25f
+      val starSize = rect.width() * 0.12f
 
       drawStar(canvas, rect.centerX() - eyeSpacing, eyeY, starSize, paint)
       drawStar(canvas, rect.centerX() + eyeSpacing, eyeY, starSize, paint)
+    },
+
+    // Pig nose
+    FaceSticker { canvas, rect ->
+      val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+      paint.color = 0xFFFAC8C8.toInt()
+      paint.style = Paint.Style.FILL
+
+      val noseCenterX = rect.centerX()
+      val noseCenterY = rect.centerY() + rect.height() * 0.1f
+      val noseRadius = rect.width() * 0.15f
+
+      canvas.drawCircle(noseCenterX, noseCenterY, noseRadius, paint)
+
+      // Nostrils
+      paint.color = 0xFF663300.toInt()
+      canvas.drawCircle(noseCenterX - noseRadius * 0.5f, noseCenterY, noseRadius * 0.4f, paint)
+      canvas.drawCircle(noseCenterX + noseRadius * 0.5f, noseCenterY, noseRadius * 0.4f, paint)
+    },
+
+    // Butterfly wings
+    FaceSticker { canvas, rect ->
+      val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+      val wingColor = 0xFFFF69B4.toInt()
+      paint.color = wingColor
+      paint.style = Paint.Style.FILL
+
+      val cx = rect.centerX()
+      val wingY = rect.centerY()
+      val wingWidth = rect.width() * 0.6f
+      val wingHeight = rect.height() * 0.5f
+
+      // Left wing
+      val leftPath = android.graphics.Path()
+      leftPath.moveTo(cx, wingY)
+      leftPath.quadTo(cx - wingWidth / 2, wingY - wingHeight, cx - wingWidth, wingY)
+      leftPath.quadTo(cx - wingWidth / 2, wingY + wingHeight, cx, wingY)
+      leftPath.close()
+      canvas.drawPath(leftPath, paint)
+
+      // Right wing
+      val rightPath = android.graphics.Path()
+      rightPath.moveTo(cx, wingY)
+      rightPath.quadTo(cx + wingWidth / 2, wingY - wingHeight, cx + wingWidth, wingY)
+      rightPath.quadTo(cx + wingWidth / 2, wingY + wingHeight, cx, wingY)
+      rightPath.close()
+      canvas.drawPath(rightPath, paint)
+
+      // Wing details
+      paint.color = Color.WHITE
+      paint.strokeWidth = 3f
+      paint.style = Paint.Style.STROKE
+      canvas.drawLine(cx - wingWidth * 0.3f, wingY, cx - wingWidth * 0.7f, wingY - wingHeight * 0.5f, paint)
+      canvas.drawLine(cx - wingWidth * 0.5f, wingY, cx - wingWidth * 0.8f, wingY + wingHeight * 0.5f, paint)
+      canvas.drawLine(cx + wingWidth * 0.3f, wingY, cx + wingWidth * 0.7f, wingY - wingHeight * 0.5f, paint)
+      canvas.drawLine(cx + wingWidth * 0.5f, wingY, cx + wingWidth * 0.8f, wingY + wingHeight * 0.5f, paint)
     }
   )
 
@@ -186,13 +242,15 @@ object FaceStickerHelper {
           sticker.draw(canvas, expanded)
         }
 
-        val stickerName = when (faceStickers.indexOf(sticker)) {
-          0 -> "Crown"
-          1 -> "Sunglasses"
-          2 -> "Mustache"
-          3 -> "Star Eyes"
-          else -> "Face Sticker"
-        }
+val stickerName = when (faceStickers.indexOf(sticker)) {
+           0 -> "Crown"
+           1 -> "Sunglasses"
+           2 -> "Mustache"
+           3 -> "Star Eyes"
+           4 -> "Pig Nose"
+           5 -> "Butterfly Wings"
+           else -> "Face Sticker"
+         }
         onResult(result, "Face $stickerName")
       }
       .addOnFailureListener {

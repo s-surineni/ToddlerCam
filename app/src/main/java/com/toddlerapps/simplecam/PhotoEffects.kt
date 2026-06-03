@@ -162,7 +162,7 @@ object PhotoEffects {
 
     // 20. High Key
     EffectInfo("High Key") { gpu ->
-      gpu.setFilter(GPUImageBrightnessFilter(0.3f))
+      gpu.setFilter(GPUImageExposureFilter(1.2f))
     },
 
     // 21. Bulge - fish-eye distortion on center
@@ -242,7 +242,7 @@ object PhotoEffects {
 
     // 28. Low Key - dark and moody
     EffectInfo("Low Key") { gpu ->
-      gpu.setFilter(GPUImageBrightnessFilter(-0.2f))
+      gpu.setFilter(GPUImageExposureFilter(-0.5f))
     },
 
     // 29. Faded - washed out vintage

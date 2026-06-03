@@ -4,7 +4,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.PointF
 import jp.co.cyberagent.android.gpuimage.GPUImage
-import jp.co.cyberagent.android.gpuimage.filter.GPUImageBrightnessFilter
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageBulgeDistortionFilter
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageColorMatrixFilter
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageContrastFilter
@@ -20,13 +19,15 @@ import jp.co.cyberagent.android.gpuimage.filter.GPUImageToneCurveFilter
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageVignetteFilter
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageWhiteBalanceFilter
 import jp.co.cyberagent.android.gpuimage.filter.GPUImageZoomBlurFilter
+import com.toddlerapps.simplecam.FaceStickerHelper
 import kotlin.random.Random
 
 object PhotoEffects {
 
   private data class EffectInfo(val name: String, val apply: (GPUImage) -> Unit)
 
-  private fun createEffects(): List<EffectInfo> = listOf(
+  // Cache the effects list to avoid recreating it every time
+  private val EFFECTS_LIST: List<EffectInfo> = listOf(
     // 1. Retro Sepia
     EffectInfo("Retro Sepia") { gpu ->
       gpu.setFilter(GPUImageColorMatrixFilter().apply {
@@ -272,6 +273,12 @@ object PhotoEffects {
     source: Bitmap,
     onResult: (Bitmap, String) -> Unit
   ) {
+    // Add null safety checks
+    if (context == null || source == null) {
+      onResult(source, "Error: Invalid input")
+      return
+    }
+
     val roll = Random.nextFloat()
 
     // 30% chance: try face detection first
@@ -280,7 +287,7 @@ object PhotoEffects {
         if (faceName != null) {
           // Face detected! Optionally add a filter on top
           if (Random.nextFloat() < 0.5f) {
-            val effect = createEffects()[Random.nextInt(createEffects().size)]
+            val effect = EFFECTS_LIST[Random.nextInt(EFFECTS_LIST.size)]
             val gpuImage = GPUImage(context)
             gpuImage.setImage(faceBitmap)
             effect.apply(gpuImage)
@@ -303,10 +310,16 @@ object PhotoEffects {
     source: Bitmap,
     onResult: (Bitmap, String) -> Unit
   ) {
+    // Add null safety checks
+    if (context == null || source == null) {
+      onResult(source, "Error: Invalid input")
+      return
+    }
+
     val roll = Random.nextFloat()
 
     if (roll < 0.45f) {
-      val effect = createEffects()[Random.nextInt(createEffects().size)]
+      val effect = EFFECTS_LIST[Random.nextInt(EFFECTS_LIST.size)]
       val gpuImage = GPUImage(context)
       gpuImage.setImage(source)
       effect.apply(gpuImage)
@@ -315,7 +328,7 @@ object PhotoEffects {
       val (bitmap, name) = StickerEffects.applyRandomSticker(source)
       onResult(bitmap, name)
     } else {
-      val effect = createEffects()[Random.nextInt(createEffects().size)]
+      val effect = EFFECTS_LIST[Random.nextInt(EFFECTS_LIST.size)]
       val gpuImage = GPUImage(context)
       gpuImage.setImage(source)
       effect.apply(gpuImage)

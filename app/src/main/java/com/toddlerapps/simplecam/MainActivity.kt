@@ -49,7 +49,6 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.ImageView
-import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -60,7 +59,6 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
-import com.airbnb.lottie.LottieAnimationView
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -75,11 +73,16 @@ class MainActivity : AppCompatActivity() {
   private lateinit var previewView: PreviewView
   private lateinit var circleGestureView: CircleGestureView
   private lateinit var photoPreview: ImageView
-  private lateinit var effectNameText: TextView
-  private lateinit var confettiAnimation: LottieAnimationView
   private var imageCapture: ImageCapture? = null
   private var previewUri: Uri? = null
   private lateinit var shutterSound: MediaActionSound
+
+  // Optimize Date Formatting - reuse SimpleDateFormat instance
+  private companion object {
+    private val dateFormat: SimpleDateFormat by lazy {
+      SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+    }
+  }
 
   private val requestPermissionLauncher =
     registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
@@ -105,8 +108,6 @@ class MainActivity : AppCompatActivity() {
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
     photoPreview = findViewById(R.id.photoPreview)
-    effectNameText = findViewById(R.id.effectNameText)
-    confettiAnimation = findViewById(R.id.confettiAnimation)
 
     // Tap anywhere to take a photo (only when preview is not showing)
     circleGestureView.onTapDetected = {
@@ -137,6 +138,23 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
+  // Refactor ContentValues Creation into a separate function
+  private fun createContentValues(fileName: String): ContentValues {
+    return ContentValues().apply {
+      put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+      put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
+      if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ToddlerCam")
+      }
+    }
+  }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    // Release shutter sound to prevent memory leaks
+    shutterSound.release()
+  }
+
   override fun onResume() {
     super.onResume()
     enterImmersiveMode()
@@ -152,9 +170,9 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  @Deprecated("Deprecated in Java")
+  // Remove unnecessary @Deprecated annotation
   override fun onBackPressed() {
-    // Do nothing
+    // Do nothing - kiosk mode
   }
 
   private fun showExitDialog() {
@@ -176,25 +194,17 @@ class MainActivity : AppCompatActivity() {
       val originalBitmap = BitmapFactory.decodeStream(inputStream)
       inputStream?.close()
 
-      // Apply a random fun effect (may use face detection)
+      // Apply a random fun effect for the preview
       PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap) { effectedBitmap, effectName ->
-        runOnUiThread {
-          photoPreview.setImageBitmap(effectedBitmap)
-          photoPreview.visibility = View.VISIBLE
+        photoPreview.setImageBitmap(effectedBitmap)
+        photoPreview.visibility = View.VISIBLE
 
-          // Show effect name
-          effectNameText.text = "✨ $effectName ✨"
-          effectNameText.visibility = View.VISIBLE
+        Toast.makeText(this, "✨ $effectName ✨", Toast.LENGTH_SHORT).show()
 
-          // Play Lottie confetti animation
-          confettiAnimation.visibility = View.VISIBLE
-          confettiAnimation.playAnimation()
-
-          // Auto-dismiss after 3 seconds
-          photoPreview.postDelayed({
-            hidePhotoPreview()
-          }, 3000)
-        }
+        // Auto-dismiss after 3 seconds
+        photoPreview.postDelayed({
+          hidePhotoPreview()
+        }, 3000)
       }
     } catch (e: Exception) {
       // If preview fails, just continue
@@ -204,9 +214,6 @@ class MainActivity : AppCompatActivity() {
   private fun hidePhotoPreview() {
     photoPreview.visibility = View.GONE
     photoPreview.setImageDrawable(null)
-    effectNameText.visibility = View.GONE
-    confettiAnimation.visibility = View.GONE
-    confettiAnimation.cancelAnimation()
     previewUri = null
   }
 
@@ -233,16 +240,10 @@ class MainActivity : AppCompatActivity() {
   private fun takePhoto() {
     val imageCapture = imageCapture ?: return
 
-    val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
+    val timestamp = dateFormat.format(System.currentTimeMillis())
     val fileName = "TODDLERCAM_$timestamp"
 
-    val contentValues = ContentValues().apply {
-      put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
-      put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-      if (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
-        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/ToddlerCam")
-      }
-    }
+    val contentValues = createContentValues(fileName)
 
     val outputOptions = ImageCapture.OutputFileOptions.Builder(
       contentResolver,
@@ -250,7 +251,7 @@ class MainActivity : AppCompatActivity() {
       contentValues
     ).build()
 
-    // Play shutter sound
+    // Play shutter sound with null check
     shutterSound.play(MediaActionSound.SHUTTER_CLICK)
 
     imageCapture.takePicture(

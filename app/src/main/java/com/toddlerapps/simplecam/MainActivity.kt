@@ -127,9 +127,6 @@ class MainActivity : AppCompatActivity() {
     shutterSound = MediaActionSound()
     shutterSound.load(MediaActionSound.SHUTTER_CLICK)
 
-    // Enter lock task (kiosk) mode
-    startLockTask()
-
     if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
         == PackageManager.PERMISSION_GRANTED) {
       startCamera()
@@ -164,9 +161,6 @@ class MainActivity : AppCompatActivity() {
     super.onWindowFocusChanged(hasFocus)
     if (hasFocus) {
       enterImmersiveMode()
-      try {
-        startLockTask()
-      } catch (_: Exception) { }
     }
   }
 
@@ -180,7 +174,6 @@ class MainActivity : AppCompatActivity() {
       .setTitle("Exit App")
       .setMessage("Are you sure you want to exit?")
       .setPositiveButton("Exit") { _, _ ->
-        stopLockTask()
         finishAffinity()
       }
       .setNegativeButton("Cancel", null)

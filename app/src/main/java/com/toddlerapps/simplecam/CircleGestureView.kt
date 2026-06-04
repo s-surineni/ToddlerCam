@@ -31,7 +31,7 @@ class CircleGestureView @JvmOverloads constructor(
     isAntiAlias = true
     style = Paint.Style.STROKE
     strokeWidth = 8f
-    color = 0x40FFFFFF
+    color = 0x00000000 // Fully transparent - no visual feedback
   }
 
   private var touchStartTime = 0L
@@ -100,8 +100,7 @@ class CircleGestureView @JvmOverloads constructor(
   }
 
   override fun onDraw(canvas: Canvas) {
-    super.onDraw(canvas)
-    canvas.drawPath(path, paint)
+    // Don't draw anything - gesture is invisible
   }
 
   private fun isCircle(): Boolean {

@@ -73,6 +73,7 @@ class MainActivity : AppCompatActivity() {
   private lateinit var previewView: PreviewView
   private lateinit var circleGestureView: CircleGestureView
   private lateinit var photoPreview: ImageView
+  private lateinit var flashOverlay: View
   private var imageCapture: ImageCapture? = null
   private var previewUri: Uri? = null
   private lateinit var shutterSound: MediaActionSound
@@ -108,10 +109,12 @@ class MainActivity : AppCompatActivity() {
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
     photoPreview = findViewById(R.id.photoPreview)
+    flashOverlay = findViewById(R.id.flashOverlay)
 
     // Tap anywhere to take a photo (only when preview is not showing)
     circleGestureView.onTapDetected = {
       if (photoPreview.visibility != View.VISIBLE) {
+        playTapAnimation()
         takePhoto()
       }
     }
@@ -274,6 +277,23 @@ class MainActivity : AppCompatActivity() {
         }
       }
     )
+  }
+
+  /**
+   * Play a fun flash animation when the kid taps to take a photo.
+   * Quick white flash that fades out.
+   */
+  private fun playTapAnimation() {
+    // White flash effect
+    flashOverlay.alpha = 0.8f
+    flashOverlay.visibility = View.VISIBLE
+    flashOverlay.animate()
+      .alpha(0f)
+      .setDuration(300)
+      .withEndAction {
+        flashOverlay.visibility = View.GONE
+      }
+      .start()
   }
 
   private fun startCamera() {

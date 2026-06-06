@@ -284,16 +284,21 @@ class MainActivity : AppCompatActivity() {
    * Quick white flash that fades out.
    */
   private fun playTapAnimation() {
-    // Gentle soft flash effect - less harsh on eyes
-    flashOverlay.alpha = 0.3f
-    flashOverlay.visibility = View.VISIBLE
-    flashOverlay.animate()
-      .alpha(0f)
-      .setDuration(200)
-      .withEndAction {
-        flashOverlay.visibility = View.GONE
-      }
-      .start()
+    // Playful wobble animation - fun and gentle on eyes
+    val rootLayout = findViewById<View>(android.R.id.content)
+    val wobbleRight = android.animation.ObjectAnimator.ofFloat(
+      rootLayout, "rotation", 0f, 2.5f
+    ).apply { duration = 60 }
+    val wobbleLeft = android.animation.ObjectAnimator.ofFloat(
+      rootLayout, "rotation", 2.5f, -2.5f
+    ).apply { duration = 60 }
+    val wobbleCenter = android.animation.ObjectAnimator.ofFloat(
+      rootLayout, "rotation", -2.5f, 0f
+    ).apply { duration = 60 }
+
+    val wobbleSet = android.animation.AnimatorSet()
+    wobbleSet.playSequentially(wobbleRight, wobbleLeft, wobbleCenter)
+    wobbleSet.start()
   }
 
   private fun startCamera() {

@@ -1,6 +1,17 @@
 # ToddlerCam
 
-Sample Android app
+A child-friendly camera app for toddlers with themed decorations, stickers, and filters — all processed entirely on your device.
+
+**Your privacy is guaranteed:** ToddlerCam uses no internet permission and makes zero network connections. No camera feed, photos, or any data are ever sent to any server. Everything — from camera preview to photo capture and decoration — stays 100% on your device.
+
+Features:
+- Full-screen camera with themed play modes (Seasons, Animals)
+- Floating emoji stickers with tilt physics
+- On-device photo decoration (filters, frames, emoji overlays)
+- Circle gesture to exit (toddler lock)
+- Screen pinning for locked-down use
+- Optional photo saving to device gallery
+- No ads, no analytics, no accounts, no internet access
 
 ## License
 

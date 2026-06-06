@@ -50,6 +50,9 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import android.view.WindowManager
+import android.content.Intent
+import android.app.ActivityManager
+import androidx.camera.core.AspectRatio
 import androidx.activity.OnBackPressedCallback
 import android.content.ContentValues
 import android.provider.MediaStore
@@ -75,11 +78,74 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.media.ExifInterface
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 
 /**
  * Main Screen - Camera app with circle gesture to exit
  */
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), SensorEventListener {
+
+  // Sensor properties for device tilt
+  private lateinit var sensorManager: SensorManager
+  private var accelerometer: Sensor? = null
+  private var tiltX = 0f
+  private var tiltY = 0f
+
+  // Sticker data model
+  class Sticker(
+    val emoji: String,
+    var x: Float, // Normalized (0.0 to 1.0)
+    var y: Float, // Normalized (0.0 to 1.0)
+    var vx: Float,
+    var vy: Float,
+    val sizePercent: Float = 0.08f
+  ) {
+    fun update(width: Float, height: Float, tiltX: Float, tiltY: Float) {
+      // Accelerometer forces: tiltX tilts left/right (accelerometer X), tiltY tilts forward/backward (accelerometer Y)
+      vx += tiltX * -0.00008f
+      vy += tiltY * 0.00008f
+
+      // Apply drag / friction
+      vx *= 0.97f
+      vy *= 0.97f
+
+      // Cap speed
+      val maxSpeed = 0.012f
+      vx = vx.coerceIn(-maxSpeed, maxSpeed)
+      vy = vy.coerceIn(-maxSpeed, maxSpeed)
+
+      // Move
+      x += vx
+      y += vy
+
+      // Bounce boundaries (using normalized coordinates to be resolution independent)
+      val minX = sizePercent * 0.5f
+      val maxX = 1.0f - sizePercent * 0.5f
+      val minY = 0.12f + sizePercent * 0.5f
+      val maxY = 0.88f - sizePercent * 0.5f
+
+      if (x < minX) {
+        x = minX
+        vx = -vx * 0.6f // Lose some speed on bounce
+      } else if (x > maxX) {
+        x = maxX
+        vx = -vx * 0.6f
+      }
+
+      if (y < minY) {
+        y = minY
+        vy = -vy * 0.6f
+      } else if (y > maxY) {
+        y = maxY
+        vy = -vy * 0.6f
+      }
+    }
+  }
+
+  private val currentStickers = mutableListOf<Sticker>()
 
   enum class Mode { NONE, SEASONS, ANIMALS }
   enum class Season { NONE, SPRING, SUMMER, AUTUMN, WINTER }
@@ -106,12 +172,16 @@ class MainActivity : AppCompatActivity() {
   private lateinit var btnOption5: TextView
   private lateinit var btnExitAppMain: View
   private lateinit var btnExitAppSub: View
+  private lateinit var btnInstructions: View
+  private lateinit var btnSettings: View
+  private var savePhotosToGallery = true
 
   private lateinit var previewView: PreviewView
   private lateinit var circleDetectionView: CircleDetectionView
   private lateinit var photoPreviewView: ImageView
   private lateinit var cameraExecutor: ExecutorService
   private val cameraPermissionRequestCode = 100
+  private val storagePermissionRequestCode = 101
   private var imageCapture: ImageCapture? = null
   private val mediaActionSound = MediaActionSound()
 
@@ -136,6 +206,10 @@ class MainActivity : AppCompatActivity() {
     photoPreviewView = findViewById(R.id.photo_preview_view)
     cameraExecutor = Executors.newSingleThreadExecutor()
 
+    // Initialize accelerometer sensors
+    sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+
     // Bind selection views
     tvCameraBanner = findViewById(R.id.tv_camera_banner)
     btnChangeMode = findViewById(R.id.btn_change_mode)
@@ -153,6 +227,25 @@ class MainActivity : AppCompatActivity() {
     btnOption5 = findViewById(R.id.btn_option_5)
     btnExitAppMain = findViewById(R.id.btn_exit_app_main)
     btnExitAppSub = findViewById(R.id.btn_exit_app_sub)
+    btnInstructions = findViewById(R.id.btn_instructions)
+    btnSettings = findViewById(R.id.btn_settings)
+
+    // Load photo saving preferences
+    val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+    savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", true)
+
+    // Clean up temporary cache photos in background
+    Executors.newSingleThreadExecutor().execute {
+      try {
+        cacheDir.listFiles()?.forEach { file ->
+          if (file.name.startsWith("ToddlerCam_")) {
+            file.delete()
+          }
+        }
+      } catch (e: Exception) {
+        // Ignore
+      }
+    }
 
     // Instantiate and add the custom overlay drawing view
     themeOverlayView = ThemeOverlayView(this)
@@ -208,14 +301,31 @@ class MainActivity : AppCompatActivity() {
     cameraProviderFuture.addListener({
       val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
 
-      // Set up the preview
-      val preview = Preview.Builder().build().also {
-        it.setSurfaceProvider(previewView.surfaceProvider)
+      // Calculate standard aspect ratio based on device screen size
+      val metrics = resources.displayMetrics
+      val screenAspectRatio = if (metrics.widthPixels > metrics.heightPixels) {
+        metrics.widthPixels.toDouble() / metrics.heightPixels
+      } else {
+        metrics.heightPixels.toDouble() / metrics.widthPixels
       }
 
-      // Set up image capture
+      val ratio = if (java.lang.Math.abs(screenAspectRatio - 4.0 / 3.0) < java.lang.Math.abs(screenAspectRatio - 16.0 / 9.0)) {
+        AspectRatio.RATIO_4_3
+      } else {
+        AspectRatio.RATIO_16_9
+      }
+
+      // Set up the preview with dynamic aspect ratio
+      val preview = Preview.Builder()
+        .setTargetAspectRatio(ratio)
+        .build().also {
+          it.setSurfaceProvider(previewView.surfaceProvider)
+        }
+
+      // Set up image capture with dynamic aspect ratio
       val imageCapture = ImageCapture.Builder()
         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+        .setTargetAspectRatio(ratio)
         .build()
       this.imageCapture = imageCapture
 
@@ -229,7 +339,10 @@ class MainActivity : AppCompatActivity() {
         // Bind preview and imageCapture to lifecycle
         cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
       } catch (exc: Exception) {
-        // Handle camera binding error
+        android.util.Log.e("ToddlerCam", "Camera use case binding failed", exc)
+        runOnUiThread {
+          android.widget.Toast.makeText(this@MainActivity, "Failed to start camera. Please restart the app.", android.widget.Toast.LENGTH_LONG).show()
+        }
       }
     }, ContextCompat.getMainExecutor(this))
   }
@@ -247,6 +360,22 @@ class MainActivity : AppCompatActivity() {
       } else {
         finish() // Exit if camera permission denied
       }
+    } else if (requestCode == storagePermissionRequestCode) {
+      if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        savePhotosToGallery = true
+        val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("save_photos_to_gallery", true).apply()
+        android.widget.Toast.makeText(this, "Storage permission granted! Photos will be saved.", android.widget.Toast.LENGTH_SHORT).show()
+      } else {
+        savePhotosToGallery = false
+        val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+        prefs.edit().putBoolean("save_photos_to_gallery", false).apply()
+        android.widget.Toast.makeText(
+          this,
+          "Storage permission denied. Photos will only show as preview (Cache Mode).",
+          android.widget.Toast.LENGTH_LONG
+        ).show()
+      }
     }
   }
 
@@ -258,6 +387,17 @@ class MainActivity : AppCompatActivity() {
     } catch (e: Exception) {
       // Ignore if lock task mode fails or is not supported
     }
+    checkLockTaskMode()
+
+    // Register accelerometer listener for sticker tilting physics
+    accelerometer?.let {
+      sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
+    }
+  }
+
+  override fun onPause() {
+    super.onPause()
+    sensorManager.unregisterListener(this)
   }
 
   override fun onDestroy() {
@@ -338,8 +478,11 @@ class MainActivity : AppCompatActivity() {
     val name = "ToddlerCam_" + SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
       .format(System.currentTimeMillis()) + ".jpg"
 
-    // Create output options object based on SDK version
-    val outputOptions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+    // Create output options object based on preference and SDK version
+    val outputOptions = if (!savePhotosToGallery) {
+      val file = java.io.File(cacheDir, name)
+      ImageCapture.OutputFileOptions.Builder(file).build()
+    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       val contentValues = ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, name)
         put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
@@ -369,17 +512,23 @@ class MainActivity : AppCompatActivity() {
           android.util.Log.d("ToddlerCam", "Photo capture succeeded: $savedUri")
           
           val uriToLoad = savedUri ?: Uri.fromFile(
-            java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES), name)
+            if (!savePhotosToGallery) {
+              java.io.File(cacheDir, name)
+            } else {
+              java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES), name)
+            }
           )
 
           uriToLoad?.let { uri ->
             // Add decorations before showing preview and notifying gallery
             addDecorationsToSavedPhoto(uri)
 
-            try {
-              contentResolver.notifyChange(uri, null)
-            } catch (e: Exception) {
-              // Ignore
+            if (savePhotosToGallery) {
+              try {
+                contentResolver.notifyChange(uri, null)
+              } catch (e: Exception) {
+                // Ignore
+              }
             }
 
             runOnUiThread {
@@ -393,10 +542,14 @@ class MainActivity : AppCompatActivity() {
             }
           }
 
-          android.widget.Toast.makeText(this@MainActivity, "Photo saved to Gallery!", android.widget.Toast.LENGTH_SHORT).show()
+          if (savePhotosToGallery) {
+            android.widget.Toast.makeText(this@MainActivity, "Photo saved to Gallery!", android.widget.Toast.LENGTH_SHORT).show()
+          } else {
+            android.widget.Toast.makeText(this@MainActivity, "Cute picture captured!", android.widget.Toast.LENGTH_SHORT).show()
+          }
 
-          // If API < Q, notify the media scanner so the photo appears in gallery
-          if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+          // If API < Q and saving to gallery, notify the media scanner so the photo appears in gallery
+          if (savePhotosToGallery && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
             val file = java.io.File(dir, name)
             android.media.MediaScannerConnection.scanFile(
@@ -435,6 +588,17 @@ class MainActivity : AppCompatActivity() {
     }
     btnExitAppMain.setOnClickListener(exitClickListener)
     btnExitAppSub.setOnClickListener(exitClickListener)
+
+    btnInstructions.setOnClickListener {
+      runParentGate {
+        showInstructionsDialog()
+      }
+    }
+    btnSettings.setOnClickListener {
+      runParentGate {
+        showSettingsDialog()
+      }
+    }
 
     btnOption1.setOnClickListener { handleOptionClick(1) }
     btnOption2.setOnClickListener { handleOptionClick(2) }
@@ -807,7 +971,310 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
+  private fun showInstructionsDialog() {
+    val dialog = android.app.Dialog(this)
+    dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+    dialog.setContentView(R.layout.dialog_instructions)
+    dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+    
+    // Set custom layout params to make it look spacious and nice
+    dialog.window?.setLayout(
+      WindowManager.LayoutParams.MATCH_PARENT,
+      WindowManager.LayoutParams.WRAP_CONTENT
+    )
+
+    // Keep immersive inside dialog
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      dialog.window?.insetsController?.hide(WindowInsets.Type.systemBars())
+    } else {
+      @Suppress("DEPRECATION")
+      dialog.window?.decorView?.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+        View.SYSTEM_UI_FLAG_FULLSCREEN
+      )
+    }
+
+    dialog.findViewById<View>(R.id.btn_close_instructions).setOnClickListener {
+      dialog.dismiss()
+      hideSystemUI()
+    }
+
+    dialog.setOnDismissListener {
+      hideSystemUI()
+    }
+
+    dialog.show()
+  }
+
+  private fun showSettingsDialog() {
+    val dialog = android.app.Dialog(this)
+    dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+    dialog.setContentView(R.layout.dialog_settings)
+    dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+    
+    // Set custom layout params to make it look spacious and nice
+    dialog.window?.setLayout(
+      WindowManager.LayoutParams.MATCH_PARENT,
+      WindowManager.LayoutParams.WRAP_CONTENT
+    )
+
+    // Keep immersive inside dialog
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      dialog.window?.insetsController?.hide(WindowInsets.Type.systemBars())
+    } else {
+      @Suppress("DEPRECATION")
+      dialog.window?.decorView?.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+        View.SYSTEM_UI_FLAG_FULLSCREEN
+      )
+    }
+
+    val switchSave = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_save_photos)
+    switchSave.isChecked = savePhotosToGallery
+
+    dialog.findViewById<View>(R.id.btn_cancel_settings).setOnClickListener {
+      dialog.dismiss()
+      hideSystemUI()
+    }
+
+    dialog.findViewById<View>(R.id.btn_save_settings).setOnClickListener {
+      val isSaveChecked = switchSave.isChecked
+      if (isSaveChecked && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+        val permission = Manifest.permission.WRITE_EXTERNAL_STORAGE
+        if (ContextCompat.checkSelfPermission(this@MainActivity, permission) != PackageManager.PERMISSION_GRANTED) {
+          ActivityCompat.requestPermissions(
+            this@MainActivity,
+            arrayOf(permission),
+            storagePermissionRequestCode
+          )
+          dialog.dismiss()
+          hideSystemUI()
+          return@setOnClickListener
+        }
+      }
+
+      savePhotosToGallery = isSaveChecked
+      
+      val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+      prefs.edit().putBoolean("save_photos_to_gallery", savePhotosToGallery).apply()
+      
+      val status = if (savePhotosToGallery) "enabled" else "disabled"
+      android.widget.Toast.makeText(this, "Photo saving $status!", android.widget.Toast.LENGTH_SHORT).show()
+      
+      dialog.dismiss()
+      hideSystemUI()
+    }
+
+    dialog.setOnDismissListener {
+      hideSystemUI()
+    }
+
+    dialog.show()
+  }
+
+  private var pinningGuideDialog: android.app.Dialog? = null
+
+  private fun checkLockTaskMode() {
+    val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    val isInLockTask = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+      activityManager.lockTaskModeState != ActivityManager.LOCK_TASK_MODE_NONE
+    } else {
+      @Suppress("DEPRECATION")
+      activityManager.isInLockTaskMode
+    }
+
+    if (!isInLockTask) {
+      showPinningGuideDialog()
+    } else {
+      pinningGuideDialog?.dismiss()
+      pinningGuideDialog = null
+    }
+  }
+
+  private fun showPinningGuideDialog() {
+    if (pinningGuideDialog?.isShowing == true) return
+
+    val dialog = android.app.Dialog(this)
+    dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+    dialog.setContentView(R.layout.dialog_pinning_guide)
+    dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+    
+    dialog.window?.setLayout(
+      WindowManager.LayoutParams.MATCH_PARENT,
+      WindowManager.LayoutParams.WRAP_CONTENT
+    )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      dialog.window?.insetsController?.hide(WindowInsets.Type.systemBars())
+    } else {
+      @Suppress("DESUPPRESS", "DEPRECATION")
+      dialog.window?.decorView?.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+        View.SYSTEM_UI_FLAG_FULLSCREEN
+      )
+    }
+
+    dialog.findViewById<View>(R.id.btn_open_settings).setOnClickListener {
+      try {
+        startActivity(Intent(android.provider.Settings.ACTION_SECURITY_SETTINGS))
+      } catch (e: Exception) {
+        android.widget.Toast.makeText(this, "Could not open settings.", android.widget.Toast.LENGTH_LONG).show()
+      }
+    }
+
+    dialog.findViewById<View>(R.id.btn_close_guide).setOnClickListener {
+      dialog.dismiss()
+      hideSystemUI()
+    }
+
+    dialog.setOnDismissListener {
+      hideSystemUI()
+      pinningGuideDialog = null
+    }
+
+    pinningGuideDialog = dialog
+    dialog.show()
+  }
+
+  private fun runParentGate(onSuccess: () -> Unit) {
+    val num1 = (3..9).random()
+    val num2 = (2..8).random()
+    val answer = num1 + num2
+
+    val dialog = android.app.Dialog(this)
+    dialog.requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
+    dialog.setContentView(R.layout.dialog_parent_gate)
+    dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+    
+    dialog.window?.setLayout(
+      WindowManager.LayoutParams.MATCH_PARENT,
+      WindowManager.LayoutParams.WRAP_CONTENT
+    )
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+      dialog.window?.insetsController?.hide(WindowInsets.Type.systemBars())
+    } else {
+      @Suppress("DEPRECATION")
+      dialog.window?.decorView?.systemUiVisibility = (
+        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+        View.SYSTEM_UI_FLAG_FULLSCREEN
+      )
+    }
+
+    val tvQuestion = dialog.findViewById<TextView>(R.id.tv_gate_question)
+    val etAnswer = dialog.findViewById<android.widget.EditText>(R.id.et_gate_answer)
+    val btnVerify = dialog.findViewById<TextView>(R.id.btn_verify_gate)
+    val btnCancel = dialog.findViewById<TextView>(R.id.btn_cancel_gate)
+
+    tvQuestion.text = "Solve the math problem to enter:\n$num1 + $num2 = ?"
+
+    btnCancel.setOnClickListener {
+      dialog.dismiss()
+      hideSystemUI()
+    }
+
+    btnVerify.setOnClickListener {
+      val input = etAnswer.text.toString().trim()
+      if (input == answer.toString()) {
+        dialog.dismiss()
+        hideSystemUI()
+        onSuccess()
+      } else {
+        android.widget.Toast.makeText(this, "Incorrect answer. Try again!", android.widget.Toast.LENGTH_SHORT).show()
+        etAnswer.text.clear()
+      }
+    }
+
+    dialog.setOnDismissListener {
+      hideSystemUI()
+    }
+
+    dialog.show()
+  }
+
+  override fun onSensorChanged(event: SensorEvent?) {
+    if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
+      tiltX = event.values[0]
+      tiltY = event.values[1]
+    }
+  }
+
+  override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+
+  private fun initializeStickers() {
+    currentStickers.clear()
+    val emojis = when (currentMode) {
+      Mode.SEASONS -> {
+        when (currentSeason) {
+          Season.SPRING -> listOf("🌸", "🌷", "🦋", "🐝", "🎈", "⚽")
+          Season.SUMMER -> listOf("☀️", "🌻", "🍦", "🏖️", "⭐", "🎈")
+          Season.AUTUMN -> listOf("🍂", "🍁", "🍄", "☔", "🏀", "💧")
+          Season.WINTER -> listOf("❄️", "⛄", "🧤", "🎁", "🎾", "❄️")
+          else -> emptyList()
+        }
+      }
+      Mode.ANIMALS -> {
+        when (currentAnimal) {
+          Animal.CAT -> listOf("🐱", "🧶", "🐭", "🐟", "🐾", "🎈")
+          Animal.DOG -> listOf("🐶", "🦴", "🎾", "⚽", "🐾", "⭐")
+          Animal.BIRD -> listOf("🐦", "🪶", "🌸", "🦋", "🎈", "⚽")
+          Animal.COW -> listOf("🐮", "🥛", "🌾", "🍀", "⚽", "🎈")
+          Animal.DUCK -> listOf("🦆", "🫧", "🌊", "🪷", "🏖️", "🫧")
+          else -> emptyList()
+        }
+      }
+      else -> emptyList()
+    }
+
+    val rand = java.util.Random()
+    emojis.forEachIndexed { index, emoji ->
+      val x = 0.15f + (index % 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
+      val y = 0.2f + (index / 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
+      val vx = (rand.nextFloat() - 0.5f) * 0.006f
+      val vy = (rand.nextFloat() - 0.5f) * 0.006f
+      
+      val isLarge = emoji == "🐱" || emoji == "🐶" || emoji == "🐮" || emoji == "🦆" || emoji == "⚽" || emoji == "🏀" || emoji == "🧶"
+      val size = if (isLarge) 0.14f else 0.08f
+
+      currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.1f, 0.9f), vx, vy, size))
+    }
+  }
+
+  private fun updateStickersPhysics() {
+    val w = themeOverlayView.width.toFloat()
+    val h = themeOverlayView.height.toFloat()
+    if (w <= 0f || h <= 0f) return
+
+    currentStickers.forEach { sticker ->
+      sticker.update(w, h, tiltX, tiltY)
+    }
+  }
+
   inner class ThemeOverlayView(context: Context) : View(context) {
+    private val updateRunnable = object : Runnable {
+      override fun run() {
+        if (currentMode != Mode.NONE) {
+          updateStickersPhysics()
+          invalidate()
+          postOnAnimation(this)
+        }
+      }
+    }
+
+    override fun onAttachedToWindow() {
+      super.onAttachedToWindow()
+      postOnAnimation(updateRunnable)
+    }
+
+    override fun onDetachedFromWindow() {
+      super.onDetachedFromWindow()
+      removeCallbacks(updateRunnable)
+    }
+
     override fun onDraw(canvas: Canvas) {
       super.onDraw(canvas)
       drawDecorations(canvas, width.toFloat(), height.toFloat(), isForSavedPhoto = false)

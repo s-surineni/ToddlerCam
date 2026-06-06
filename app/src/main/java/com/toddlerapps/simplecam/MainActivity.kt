@@ -75,7 +75,6 @@ class MainActivity : AppCompatActivity() {
   private lateinit var circleGestureView: CircleGestureView
   private lateinit var photoPreview: ImageView
   private lateinit var effectNameText: TextView
-  private lateinit var flashOverlay: View
   private var imageCapture: ImageCapture? = null
   private var previewUri: Uri? = null
   private lateinit var shutterSound: MediaActionSound
@@ -113,7 +112,6 @@ class MainActivity : AppCompatActivity() {
     circleGestureView = findViewById(R.id.circleGestureView)
     photoPreview = findViewById(R.id.photoPreview)
     effectNameText = findViewById(R.id.effectNameText)
-    flashOverlay = findViewById(R.id.flashOverlay)
 
     // Tap anywhere to take a photo (only when preview is not showing and not processing)
     circleGestureView.onTapDetected = {

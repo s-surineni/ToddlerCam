@@ -36,14 +36,6 @@
       app:lottie_loop="true"
       app:lottie_rawRes="@raw/confetti" />
 
-  <!-- Tap flash animation overlay -->
-  <View
-      android:id="@+id/flashOverlay"
-      android:layout_width="match_parent"
-      android:layout_height="match_parent"
-      android:background="#FFFFFF"
-      android:visibility="gone" />
-
   <!-- Effect name display -->
   <TextView
       android:id="@+id/effectNameText"

@@ -221,6 +221,8 @@ object FaceStickerHelper {
 
     detector.process(image)
       .addOnSuccessListener { faces ->
+        detector.close() // Close detector to free resources
+
         if (faces.isEmpty()) {
           onResult(source, null)
           return@addOnSuccessListener
@@ -242,18 +244,19 @@ object FaceStickerHelper {
           sticker.draw(canvas, expanded)
         }
 
-val stickerName = when (faceStickers.indexOf(sticker)) {
-           0 -> "Crown"
-           1 -> "Sunglasses"
-           2 -> "Mustache"
-           3 -> "Star Eyes"
-           4 -> "Pig Nose"
-           5 -> "Butterfly Wings"
-           else -> "Face Sticker"
-         }
+        val stickerName = when (faceStickers.indexOf(sticker)) {
+          0 -> "Crown"
+          1 -> "Sunglasses"
+          2 -> "Mustache"
+          3 -> "Star Eyes"
+          4 -> "Pig Nose"
+          5 -> "Butterfly Wings"
+          else -> "Face Sticker"
+        }
         onResult(result, "Face $stickerName")
       }
       .addOnFailureListener {
+        detector.close() // Close detector on failure too
         onResult(source, null)
       }
   }

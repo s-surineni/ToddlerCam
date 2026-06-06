@@ -51,6 +51,7 @@ import android.view.WindowManager
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.CameraSelector
@@ -107,6 +108,13 @@ class MainActivity : AppCompatActivity() {
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
     setContentView(R.layout.activity_main)
+
+    // Disable back button - kiosk mode
+    onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+      override fun handleOnBackPressed() {
+        // Do nothing - kiosk mode
+      }
+    })
 
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
@@ -169,10 +177,6 @@ class MainActivity : AppCompatActivity() {
     }
   }
 
-  // Remove unnecessary @Deprecated annotation
-  override fun onBackPressed() {
-    // Do nothing - kiosk mode
-  }
 
   private fun showExitDialog() {
     AlertDialog.Builder(this)
@@ -191,33 +195,41 @@ class MainActivity : AppCompatActivity() {
     // Show fun loading animation while effects are being processed
     showLoadingAnimation()
 
-    try {
-      val inputStream = contentResolver.openInputStream(uri)
-      val originalBitmap = BitmapFactory.decodeStream(inputStream)
-      inputStream?.close()
+    // Decode bitmap and apply effects on background thread to avoid ANR
+    Thread {
+      try {
+        val inputStream = contentResolver.openInputStream(uri)
+        val originalBitmap = BitmapFactory.decodeStream(inputStream)
+        inputStream?.close()
 
-      // Apply a random fun effect for the preview
-      PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap) { effectedBitmap, effectName ->
-        hideLoadingAnimation()
+        // Apply a random fun effect for the preview
+        PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap) { effectedBitmap, effectName ->
+          // Post UI updates back to main thread
+          runOnUiThread {
+            hideLoadingAnimation()
 
-        photoPreview.setImageBitmap(effectedBitmap)
-        photoPreview.visibility = View.VISIBLE
+            photoPreview.setImageBitmap(effectedBitmap)
+            photoPreview.visibility = View.VISIBLE
 
-        // Show effect name as a fun overlay badge
-        effectNameText.text = "✨ $effectName ✨"
-        effectNameText.visibility = View.VISIBLE
-        effectNameText.alpha = 0f
-        effectNameText.animate().alpha(1f).setDuration(300).start()
+            // Show effect name as a fun overlay badge
+            effectNameText.text = "✨ $effectName ✨"
+            effectNameText.visibility = View.VISIBLE
+            effectNameText.alpha = 0f
+            effectNameText.animate().alpha(1f).setDuration(300).start()
 
-        // Auto-dismiss after 3 seconds
-        photoPreview.postDelayed({
-          hidePhotoPreview()
-        }, 3000)
+            // Auto-dismiss after 3 seconds
+            photoPreview.postDelayed({
+              hidePhotoPreview()
+            }, 3000)
+          }
+        }
+      } catch (e: Exception) {
+        runOnUiThread {
+          hideLoadingAnimation()
+          isProcessingPhoto = false
+        }
       }
-    } catch (e: Exception) {
-      hideLoadingAnimation()
-      isProcessingPhoto = false
-    }
+    }.start()
   }
 
   private fun showLoadingAnimation() {

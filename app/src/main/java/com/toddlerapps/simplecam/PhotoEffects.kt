@@ -327,6 +327,10 @@ object PhotoEffects {
       effect.apply(gpuImage)
       val filtered = gpuImage.getBitmapWithFilterApplied()
       val (stickerBitmap, stickerName) = StickerEffects.applyRandomSticker(filtered)
+      // Recycle intermediate filtered bitmap to free memory
+      if (filtered != source && filtered != stickerBitmap) {
+        filtered.recycle()
+      }
       onResult(stickerBitmap, "${effect.name} + $stickerName")
     } else {
       // Stickers only

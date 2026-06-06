@@ -318,16 +318,9 @@ object PhotoEffects {
 
     val roll = Random.nextFloat()
 
-    if (roll < 0.45f) {
-      val effect = EFFECTS_LIST[Random.nextInt(EFFECTS_LIST.size)]
-      val gpuImage = GPUImage(context)
-      gpuImage.setImage(source)
-      effect.apply(gpuImage)
-      onResult(gpuImage.getBitmapWithFilterApplied(), effect.name)
-    } else if (roll < 0.75f) {
-      val (bitmap, name) = StickerEffects.applyRandomSticker(source)
-      onResult(bitmap, name)
-    } else {
+    // Always apply emoji stickers; optionally add a filter on top
+    if (roll < 0.4f) {
+      // Filter + stickers
       val effect = EFFECTS_LIST[Random.nextInt(EFFECTS_LIST.size)]
       val gpuImage = GPUImage(context)
       gpuImage.setImage(source)
@@ -335,6 +328,10 @@ object PhotoEffects {
       val filtered = gpuImage.getBitmapWithFilterApplied()
       val (stickerBitmap, stickerName) = StickerEffects.applyRandomSticker(filtered)
       onResult(stickerBitmap, "${effect.name} + $stickerName")
+    } else {
+      // Stickers only
+      val (bitmap, name) = StickerEffects.applyRandomSticker(source)
+      onResult(bitmap, name)
     }
   }
 }

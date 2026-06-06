@@ -49,6 +49,7 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.WindowManager
 import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -73,10 +74,12 @@ class MainActivity : AppCompatActivity() {
   private lateinit var previewView: PreviewView
   private lateinit var circleGestureView: CircleGestureView
   private lateinit var photoPreview: ImageView
+  private lateinit var effectNameText: TextView
   private lateinit var flashOverlay: View
   private var imageCapture: ImageCapture? = null
   private var previewUri: Uri? = null
   private lateinit var shutterSound: MediaActionSound
+  private var isProcessingPhoto = false
 
   // Optimize Date Formatting - reuse SimpleDateFormat instance
   private companion object {
@@ -109,11 +112,12 @@ class MainActivity : AppCompatActivity() {
     previewView = findViewById(R.id.previewView)
     circleGestureView = findViewById(R.id.circleGestureView)
     photoPreview = findViewById(R.id.photoPreview)
+    effectNameText = findViewById(R.id.effectNameText)
     flashOverlay = findViewById(R.id.flashOverlay)
 
-    // Tap anywhere to take a photo (only when preview is not showing)
+    // Tap anywhere to take a photo (only when preview is not showing and not processing)
     circleGestureView.onTapDetected = {
-      if (photoPreview.visibility != View.VISIBLE) {
+      if (!isProcessingPhoto && photoPreview.visibility != View.VISIBLE) {
         playTapAnimation()
         takePhoto()
       }
@@ -185,6 +189,10 @@ class MainActivity : AppCompatActivity() {
 
   private fun showPhotoPreview(uri: Uri) {
     previewUri = uri
+
+    // Show fun loading animation while effects are being processed
+    showLoadingAnimation()
+
     try {
       val inputStream = contentResolver.openInputStream(uri)
       val originalBitmap = BitmapFactory.decodeStream(inputStream)
@@ -192,10 +200,16 @@ class MainActivity : AppCompatActivity() {
 
       // Apply a random fun effect for the preview
       PhotoEffects.applyRandomEffect(this@MainActivity, originalBitmap) { effectedBitmap, effectName ->
+        hideLoadingAnimation()
+
         photoPreview.setImageBitmap(effectedBitmap)
         photoPreview.visibility = View.VISIBLE
 
-        Toast.makeText(this, "✨ $effectName ✨", Toast.LENGTH_SHORT).show()
+        // Show effect name as a fun overlay badge
+        effectNameText.text = "✨ $effectName ✨"
+        effectNameText.visibility = View.VISIBLE
+        effectNameText.alpha = 0f
+        effectNameText.animate().alpha(1f).setDuration(300).start()
 
         // Auto-dismiss after 3 seconds
         photoPreview.postDelayed({
@@ -203,14 +217,51 @@ class MainActivity : AppCompatActivity() {
         }, 3000)
       }
     } catch (e: Exception) {
-      // If preview fails, just continue
+      hideLoadingAnimation()
+      isProcessingPhoto = false
     }
+  }
+
+  private fun showLoadingAnimation() {
+    val loadingMessages = listOf(
+      "✨ Making magic! ✨",
+      "🎨 Adding sparkles! 🌟",
+      "🪄 Almost ready! 🎉",
+      "🌈 Sprinkling fun! 💫",
+      "🦄 Creating magic! 🎈"
+    )
+    effectNameText.text = loadingMessages.random()
+    effectNameText.visibility = View.VISIBLE
+    effectNameText.alpha = 1f
+
+    // Pulsing animation to show it's working
+    effectNameText.animate()
+      .scaleX(1.1f)
+      .scaleY(1.1f)
+      .setDuration(400)
+      .withEndAction {
+        effectNameText.animate()
+          .scaleX(1f)
+          .scaleY(1f)
+          .setDuration(400)
+          .start()
+      }
+      .start()
+  }
+
+  private fun hideLoadingAnimation() {
+    effectNameText.animate().cancel()
+    effectNameText.scaleX = 1f
+    effectNameText.scaleY = 1f
+    effectNameText.visibility = View.GONE
   }
 
   private fun hidePhotoPreview() {
     photoPreview.visibility = View.GONE
     photoPreview.setImageDrawable(null)
+    effectNameText.visibility = View.GONE
     previewUri = null
+    isProcessingPhoto = false
   }
 
   private fun enterImmersiveMode() {
@@ -247,6 +298,7 @@ class MainActivity : AppCompatActivity() {
 
   private fun takePhoto() {
     val imageCapture = imageCapture ?: return
+    isProcessingPhoto = true
 
     val timestamp = dateFormat.format(System.currentTimeMillis())
     val fileName = "TODDLERCAM_$timestamp"
@@ -273,6 +325,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         override fun onError(exception: ImageCaptureException) {
+          isProcessingPhoto = false
           Toast.makeText(this@MainActivity, "Failed to save photo", Toast.LENGTH_SHORT).show()
         }
       }

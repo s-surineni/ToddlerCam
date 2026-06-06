@@ -668,6 +668,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     // Enable circle exit drawing
     circleDetectionView.isEnabled = true
     
+    // Initialize drifting stickers with physics
+    initializeStickers()
+    
     // Force overlay to redraw
     themeOverlayView.invalidate()
   }
@@ -823,33 +826,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
     }
 
-    // 2. Draw border emojis & animal stickers
-    if (currentMode == Mode.SEASONS) {
-      val emojis = when (currentSeason) {
-        Season.SPRING -> listOf("🌸", "🌷", "🍃", "🦋")
-        Season.SUMMER -> listOf("☀️", "🌻", "🍦", "🌊")
-        Season.AUTUMN -> listOf("🍂", "🍁", "🌧️", "💧")
-        Season.WINTER -> listOf("❄️", "⛄", "❄️", "🧤")
-        else -> emptyList()
+    // 2. Draw drifting physics stickers (drift, bounce, tilt with accelerometer)
+    if (currentStickers.isNotEmpty()) {
+      val stickerPaint = Paint().apply {
+        isAntiAlias = true
+        textAlign = Paint.Align.CENTER
       }
-
-      if (emojis.isNotEmpty()) {
-        val size = w * 0.08f // Emoji size is 8% of screen width
-        paint.textSize = size
-
-        // Top Row
-        canvas.drawText(emojis[0], w * 0.15f, h * 0.12f, paint)
-        canvas.drawText(emojis[1], w * 0.85f, h * 0.12f, paint)
-
-        // Bottom Row
-        canvas.drawText(emojis[2], w * 0.20f, h * 0.90f, paint)
-        canvas.drawText(emojis[3], w * 0.80f, h * 0.90f, paint)
-
-        // Left/Right sides
-        canvas.drawText(emojis[0], w * 0.10f, h * 0.50f, paint)
-        canvas.drawText(emojis[1], w * 0.90f, h * 0.50f, paint)
+      currentStickers.forEach { sticker ->
+        val px = sticker.x * w
+        val py = sticker.y * h
+        stickerPaint.textSize = w * sticker.sizePercent
+        val centerY = py - (stickerPaint.descent() + stickerPaint.ascent()) / 2
+        canvas.drawText(sticker.emoji, px, centerY, stickerPaint)
       }
-    } else if (currentMode == Mode.ANIMALS) {
+    }
+
+    // 3. Draw static animal decorations (large corner mascot + accent)
+    if (currentMode == Mode.ANIMALS) {
       val (animalEmoji, accentEmoji) = when (currentAnimal) {
         Animal.CAT -> Pair("🐱", "🐾")
         Animal.DOG -> Pair("🐶", "🐾")
@@ -860,16 +853,16 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
 
       if (animalEmoji.isNotEmpty()) {
-        // Draw the large animal sticker in the bottom right corner
-        val stickerSize = w * 0.28f // Sticker size is 28% of screen width
+        val stickerSize = w * 0.28f
         paint.textSize = stickerSize
-        canvas.drawText(animalEmoji, w * 0.78f, h * 0.88f, paint)
+        val centerY = h * 0.88f - (paint.descent() + paint.ascent()) / 2
+        canvas.drawText(animalEmoji, w * 0.78f, centerY, paint)
 
-        // Draw the cute accent sticker in the bottom left corner
         if (accentEmoji.isNotEmpty()) {
-          val accentSize = w * 0.15f // Accent size is 15% of screen width
+          val accentSize = w * 0.15f
           paint.textSize = accentSize
-          canvas.drawText(accentEmoji, w * 0.22f, h * 0.88f, paint)
+          val accentY = h * 0.88f - (paint.descent() + paint.ascent()) / 2
+          canvas.drawText(accentEmoji, w * 0.22f, accentY, paint)
         }
       }
     }
@@ -1210,20 +1203,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val emojis = when (currentMode) {
       Mode.SEASONS -> {
         when (currentSeason) {
-          Season.SPRING -> listOf("🌸", "🌷", "🦋", "🐝", "🎈", "⚽")
-          Season.SUMMER -> listOf("☀️", "🌻", "🍦", "🏖️", "⭐", "🎈")
-          Season.AUTUMN -> listOf("🍂", "🍁", "🍄", "☔", "🏀", "💧")
-          Season.WINTER -> listOf("❄️", "⛄", "🧤", "🎁", "🎾", "❄️")
+          Season.SPRING -> listOf("🌸", "🌷", "🦋", "🐝", "⚽", "🧸", "🚗", "🎈", "🌈", "🐰")
+          Season.SUMMER -> listOf("☀️", "🌻", "🍦", "⭐", "🏀", "🧸", "🚒", "🎈", "🌈", "🐸")
+          Season.AUTUMN -> listOf("🍂", "🍁", "🍄", "🏈", "🚜", "🧸", "🎃", "🪁", "🚂", "🐿️")
+          Season.WINTER -> listOf("❄️", "⛄", "🧤", "🎁", "🎾", "🚂", "🎄", "🧸", "🌟", "🐧")
           else -> emptyList()
         }
       }
       Mode.ANIMALS -> {
         when (currentAnimal) {
-          Animal.CAT -> listOf("🐱", "🧶", "🐭", "🐟", "🐾", "🎈")
-          Animal.DOG -> listOf("🐶", "🦴", "🎾", "⚽", "🐾", "⭐")
-          Animal.BIRD -> listOf("🐦", "🪶", "🌸", "🦋", "🎈", "⚽")
-          Animal.COW -> listOf("🐮", "🥛", "🌾", "🍀", "⚽", "🎈")
-          Animal.DUCK -> listOf("🦆", "🫧", "🌊", "🪷", "🏖️", "🫧")
+          Animal.CAT -> listOf("🐱", "🧶", "🐭", "🐟", "⚽", "🧸", "🐾", "🎈", "🚗", "🐰")
+          Animal.DOG -> listOf("🐶", "🦴", "🎾", "⚽", "🏀", "⭐", "🧸", "🚗", "🐾", "🌈")
+          Animal.BIRD -> listOf("🐦", "🪶", "🌸", "🦋", "⚽", "🎈", "🧸", "🌈", "🪀", "🐸")
+          Animal.COW -> listOf("🐮", "🥛", "🌾", "🍀", "⚽", "🎈", "🧸", "🚜", "🌟", "🐰")
+          Animal.DUCK -> listOf("🦆", "🫧", "🌊", "🪷", "⚽", "🎈", "🧸", "🚤", "🌈", "🐸")
           else -> emptyList()
         }
       }
@@ -1231,13 +1224,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     val rand = java.util.Random()
+    val largeEmojis = setOf("🐱", "🐶", "🐮", "🦆", "⚽", "🏀", "🏈", "🎾", "🧶", "🧸", "🚗", "🚒", "🚜", "🚂", "🚤", "🎃", "🌈", "🐰", "🐸", "🐧", "🐿️")
     emojis.forEachIndexed { index, emoji ->
       val x = 0.15f + (index % 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
       val y = 0.2f + (index / 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
       val vx = (rand.nextFloat() - 0.5f) * 0.006f
       val vy = (rand.nextFloat() - 0.5f) * 0.006f
       
-      val isLarge = emoji == "🐱" || emoji == "🐶" || emoji == "🐮" || emoji == "🦆" || emoji == "⚽" || emoji == "🏀" || emoji == "🧶"
+      val isLarge = emoji in largeEmojis
       val size = if (isLarge) 0.14f else 0.08f
 
       currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.1f, 0.9f), vx, vy, size))

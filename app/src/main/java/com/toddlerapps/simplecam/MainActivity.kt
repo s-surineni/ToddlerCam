@@ -284,12 +284,12 @@ class MainActivity : AppCompatActivity() {
    * Quick white flash that fades out.
    */
   private fun playTapAnimation() {
-    // White flash effect
-    flashOverlay.alpha = 0.8f
+    // Gentle soft flash effect - less harsh on eyes
+    flashOverlay.alpha = 0.3f
     flashOverlay.visibility = View.VISIBLE
     flashOverlay.animate()
       .alpha(0f)
-      .setDuration(300)
+      .setDuration(200)
       .withEndAction {
         flashOverlay.visibility = View.GONE
       }

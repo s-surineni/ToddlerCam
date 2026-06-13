@@ -56,11 +56,79 @@
         android:textStyle="bold"
         android:visibility="gone" />
 
+    <!-- Switch Camera Button (bottom-left, above circle detection) -->
+    <TextView
+        android:id="@+id/btn_switch_camera"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="32dp"
+        android:background="@drawable/camera_banner_background"
+        android:gravity="center"
+        android:text="🔄"
+        android:textSize="24sp"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true" />
+
     <!-- Circle Detection Overlay -->
     <com.toddlerapps.simplecam.CircleDetectionView
         android:id="@+id/circle_detection_view"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
+
+    <!-- Time's Up Overlay -->
+    <FrameLayout
+        android:id="@+id/layout_time_up"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#CC2196F3"
+        android:visibility="gone"
+        android:clickable="true"
+        android:focusable="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="48dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="⏰"
+                android:textSize="80sp"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Time's Up!"
+                android:textColor="#FFFFFF"
+                android:textSize="42sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Great playing today! 🎉"
+                android:textColor="#FFFFFF"
+                android:textSize="22sp"
+                android:layout_marginBottom="8dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Come back tomorrow! 🌙"
+                android:textColor="#FFE082"
+                android:textSize="24sp"
+                android:textStyle="bold" />
+        </LinearLayout>
+    </FrameLayout>
 
     <!-- Photo Preview Image View -->
     <ImageView

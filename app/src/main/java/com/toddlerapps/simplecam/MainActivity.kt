@@ -179,11 +179,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   private lateinit var previewView: PreviewView
   private lateinit var circleDetectionView: CircleDetectionView
   private lateinit var photoPreviewView: ImageView
+  private lateinit var btnSwitchCamera: View
   private lateinit var cameraExecutor: ExecutorService
   private val cameraPermissionRequestCode = 100
   private val storagePermissionRequestCode = 101
   private var imageCapture: ImageCapture? = null
+  private var cameraProvider: ProcessCameraProvider? = null
+  private var preview: Preview? = null
+  private var useFrontCamera = false
   private val mediaActionSound = MediaActionSound()
+
+  // Play time limit fields
+  private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+  private var playTimeLimitMinutes = 30
+  private var playTimeLimitRunnable: Runnable? = null
+  private var isTimeUp = false
+  private lateinit var layoutTimeUp: View
 
   private val hidePreviewRunnable = Runnable {
     photoPreviewView.visibility = View.GONE
@@ -204,6 +215,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     previewView = findViewById(R.id.preview_view)
     circleDetectionView = findViewById(R.id.circle_detection_view)
     photoPreviewView = findViewById(R.id.photo_preview_view)
+    btnSwitchCamera = findViewById(R.id.btn_switch_camera)
+    layoutTimeUp = findViewById(R.id.layout_time_up)
     cameraExecutor = Executors.newSingleThreadExecutor()
 
     // Initialize accelerometer sensors
@@ -230,9 +243,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     btnInstructions = findViewById(R.id.btn_instructions)
     btnSettings = findViewById(R.id.btn_settings)
 
-    // Load photo saving preferences
+    // Load saved preferences
     val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
     savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", true)
+    playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 30)
 
     // Clean up temporary cache photos in background
     Executors.newSingleThreadExecutor().execute {
@@ -253,6 +267,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     // Set up menu clicks
     setupMenuClicks()
+
+    // Switch between front and back camera
+    btnSwitchCamera.setOnClickListener {
+      useFrontCamera = !useFrontCamera
+      bindCameraUseCases()
+    }
 
     // Show selection screen by default
     showSelectionScreen()
@@ -299,7 +319,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val cameraProviderFuture = ProcessCameraProvider.getInstance(this)
 
     cameraProviderFuture.addListener({
-      val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+      cameraProvider = cameraProviderFuture.get()
 
       // Calculate standard aspect ratio based on device screen size
       val metrics = resources.displayMetrics
@@ -316,35 +336,35 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
 
       // Set up the preview with dynamic aspect ratio
-      val preview = Preview.Builder()
+      preview = Preview.Builder()
         .setTargetAspectRatio(ratio)
         .build().also {
           it.setSurfaceProvider(previewView.surfaceProvider)
         }
 
       // Set up image capture with dynamic aspect ratio
-      val imageCapture = ImageCapture.Builder()
+      imageCapture = ImageCapture.Builder()
         .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
         .setTargetAspectRatio(ratio)
         .build()
-      this.imageCapture = imageCapture
 
-      // Select back camera
-      val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
-      try {
-        // Unbind any previous camera
-        cameraProvider.unbindAll()
-
-        // Bind preview and imageCapture to lifecycle
-        cameraProvider.bindToLifecycle(this, cameraSelector, preview, imageCapture)
-      } catch (exc: Exception) {
-        android.util.Log.e("ToddlerCam", "Camera use case binding failed", exc)
-        runOnUiThread {
-          android.widget.Toast.makeText(this@MainActivity, "Failed to start camera. Please restart the app.", android.widget.Toast.LENGTH_LONG).show()
-        }
-      }
+      bindCameraUseCases()
     }, ContextCompat.getMainExecutor(this))
+  }
+
+  private fun bindCameraUseCases() {
+    val provider = cameraProvider ?: return
+    val selector = if (useFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+
+    try {
+      provider.unbindAll()
+      provider.bindToLifecycle(this, selector, preview, imageCapture)
+    } catch (exc: Exception) {
+      android.util.Log.e("ToddlerCam", "Camera use case binding failed", exc)
+      runOnUiThread {
+        android.widget.Toast.makeText(this@MainActivity, "Failed to switch camera.", android.widget.Toast.LENGTH_LONG).show()
+      }
+    }
   }
 
   override fun onRequestPermissionsResult(
@@ -398,6 +418,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   override fun onPause() {
     super.onPause()
     sensorManager.unregisterListener(this)
+    // Cancel play time timer when app goes to background
+    playTimeLimitRunnable?.let { mainHandler.removeCallbacks(it) }
+    playTimeLimitRunnable = null
   }
 
   override fun onDestroy() {
@@ -664,6 +687,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     tvCameraBanner.text = getBannerText()
     tvCameraBanner.visibility = View.VISIBLE
     btnChangeMode.visibility = View.VISIBLE
+    btnSwitchCamera.visibility = View.VISIBLE
     
     // Enable circle exit drawing
     circleDetectionView.isEnabled = true
@@ -671,11 +695,39 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     // Initialize drifting stickers with physics
     initializeStickers()
     
+    // Schedule play time limit
+    isTimeUp = false
+    layoutTimeUp.visibility = View.GONE
+    playTimeLimitRunnable?.let { mainHandler.removeCallbacks(it) }
+    val limitMs = playTimeLimitMinutes * 60 * 1000L
+    playTimeLimitRunnable = Runnable {
+      showTimeUpScreen()
+    }
+    mainHandler.postDelayed(playTimeLimitRunnable!!, limitMs)
+    
     // Force overlay to redraw
     themeOverlayView.invalidate()
   }
 
+  private fun showTimeUpScreen() {
+    isTimeUp = true
+    layoutTimeUp.visibility = View.VISIBLE
+    layoutTimeUp.bringToFront()
+    circleDetectionView.isEnabled = false
+    // Stop sticker physics
+    currentMode = Mode.NONE
+    currentSeason = Season.NONE
+    currentAnimal = Animal.NONE
+    themeOverlayView.invalidate()
+  }
+
   private fun showSelectionScreen() {
+    // Cancel play time timer when exiting camera
+    playTimeLimitRunnable?.let { mainHandler.removeCallbacks(it) }
+    playTimeLimitRunnable = null
+    isTimeUp = false
+    layoutTimeUp.visibility = View.GONE
+
     // Reset selections
     currentMode = Mode.NONE
     currentSeason = Season.NONE
@@ -686,6 +738,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     containerModeSelection.visibility = View.VISIBLE
     tvCameraBanner.visibility = View.GONE
     btnChangeMode.visibility = View.GONE
+    btnSwitchCamera.visibility = View.GONE
 
     // Disable exit drawing when selection menu is visible
     circleDetectionView.isEnabled = false
@@ -1027,6 +1080,37 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val switchSave = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_save_photos)
     switchSave.isChecked = savePhotosToGallery
 
+    // Time limit picker buttons
+    val timeOptions = listOf(
+      dialog.findViewById<TextView>(R.id.btn_time_15),
+      dialog.findViewById<TextView>(R.id.btn_time_30),
+      dialog.findViewById<TextView>(R.id.btn_time_45),
+      dialog.findViewById<TextView>(R.id.btn_time_60)
+    )
+    val timeValues = listOf(15, 30, 45, 60)
+    var selectedTime = playTimeLimitMinutes
+
+    fun updateTimeButtonStyles() {
+      timeOptions.forEachIndexed { index, btn ->
+        val isSelected = timeValues[index] == selectedTime
+        btn.backgroundTintList = if (isSelected) {
+          android.content.res.ColorStateList.valueOf(0xFF3F51B5.toInt())
+        } else {
+          null
+        }
+        btn.setTextColor(if (isSelected) android.graphics.Color.WHITE else 0xFF333333.toInt())
+      }
+    }
+    selectedTime = playTimeLimitMinutes
+    updateTimeButtonStyles()
+
+    timeOptions.forEachIndexed { index, btn ->
+      btn.setOnClickListener {
+        selectedTime = timeValues[index]
+        updateTimeButtonStyles()
+      }
+    }
+
     dialog.findViewById<View>(R.id.btn_cancel_settings).setOnClickListener {
       dialog.dismiss()
       hideSystemUI()
@@ -1049,9 +1133,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
 
       savePhotosToGallery = isSaveChecked
+      playTimeLimitMinutes = selectedTime
       
       val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
       prefs.edit().putBoolean("save_photos_to_gallery", savePhotosToGallery).apply()
+      prefs.edit().putInt("play_time_limit_minutes", playTimeLimitMinutes).apply()
       
       val status = if (savePhotosToGallery) "enabled" else "disabled"
       android.widget.Toast.makeText(this, "Photo saving $status!", android.widget.Toast.LENGTH_SHORT).show()

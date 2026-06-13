@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   private var cameraProvider: ProcessCameraProvider? = null
   private var preview: Preview? = null
   private var useFrontCamera = false
+  private var showStickers = true
   private val mediaActionSound = MediaActionSound()
 
   // Play time limit fields
@@ -248,6 +249,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", true)
     playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 30)
     useFrontCamera = prefs.getBoolean("use_front_camera", false)
+    showStickers = prefs.getBoolean("show_stickers", true)
 
     // Clean up temporary cache photos in background
     Executors.newSingleThreadExecutor().execute {
@@ -1089,6 +1091,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val switchFront = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_front_camera)
     switchFront.isChecked = useFrontCamera
 
+    val switchStickers = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_show_stickers)
+    switchStickers.isChecked = showStickers
+
     // Time limit picker buttons
     val timeOptions = listOf(
       dialog.findViewById<TextView>(R.id.btn_time_15),
@@ -1096,7 +1101,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       dialog.findViewById<TextView>(R.id.btn_time_45),
       dialog.findViewById<TextView>(R.id.btn_time_60)
     )
-    val timeValues = listOf(15, 30, 45, 60)
+    val timeValues = listOf(5, 15, 30, 45)
     var selectedTime = playTimeLimitMinutes
 
     fun updateTimeButtonStyles() {
@@ -1145,11 +1150,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       savePhotosToGallery = isSaveChecked
       playTimeLimitMinutes = selectedTime
       useFrontCamera = switchFront.isChecked
+      showStickers = switchStickers.isChecked
       
       val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
       prefs.edit().putBoolean("save_photos_to_gallery", savePhotosToGallery).apply()
       prefs.edit().putInt("play_time_limit_minutes", playTimeLimitMinutes).apply()
       prefs.edit().putBoolean("use_front_camera", useFrontCamera).apply()
+      prefs.edit().putBoolean("show_stickers", showStickers).apply()
 
       // Rebind camera with new setting immediately
       bindCameraUseCases()
@@ -1301,6 +1308,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
   private fun initializeStickers() {
     currentStickers.clear()
+    if (!showStickers) return
     val emojis = when (currentMode) {
       Mode.SEASONS -> {
         when (currentSeason) {

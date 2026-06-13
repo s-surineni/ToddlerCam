@@ -112,6 +112,46 @@
 
     </LinearLayout>
 
+    <!-- Show Stickers Toggle -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="24dp">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="🎉 Floating Stickers"
+                android:textColor="#333333"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show drifting emoji stickers on camera."
+                android:textColor="#666666"
+                android:textSize="13sp"
+                android:layout_marginTop="4dp" />
+        </LinearLayout>
+
+        <androidx.appcompat.widget.SwitchCompat
+            android:id="@+id/switch_show_stickers"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="16dp"
+            android:checked="true" />
+
+    </LinearLayout>
+
     <!-- Play Time Limit Section -->
     <LinearLayout
         android:layout_width="match_parent"
@@ -149,7 +189,7 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="15 min"
+                android:text="5 min"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:layout_marginEnd="6dp"
@@ -162,7 +202,7 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="30 min"
+                android:text="15 min"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:layout_marginStart="6dp"
@@ -176,7 +216,7 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="45 min"
+                android:text="30 min"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:layout_marginStart="6dp"
@@ -190,7 +230,7 @@
                 android:layout_height="48dp"
                 android:layout_weight="1"
                 android:gravity="center"
-                android:text="60 min"
+                android:text="45 min"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:layout_marginStart="6dp"

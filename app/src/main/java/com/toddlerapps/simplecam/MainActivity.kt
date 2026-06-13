@@ -294,9 +294,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
     }
 
-    // Set up tap callback to take a photo
+    // Set up tap callback to take a photo (blocked when time's up)
     circleDetectionView.setTapCallback {
-      takePhoto()
+      if (!isTimeUp) {
+        takePhoto()
+      }
     }
 
     // Check and request camera permission
@@ -713,7 +715,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     isTimeUp = true
     layoutTimeUp.visibility = View.VISIBLE
     layoutTimeUp.bringToFront()
-    circleDetectionView.isEnabled = false
+    // Allow circle gesture to pass through and exit camera
+    layoutTimeUp.isClickable = false
+    layoutTimeUp.isFocusable = false
+    circleDetectionView.isEnabled = true
     // Stop sticker physics
     currentMode = Mode.NONE
     currentSeason = Season.NONE

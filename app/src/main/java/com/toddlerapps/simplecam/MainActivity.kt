@@ -700,6 +700,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     // Initialize drifting stickers with physics
     initializeStickers()
     
+    // Reset tilt-sensitive ball position
+    themeOverlayView.resetBall()
+    
     // Schedule play time limit
     isTimeUp = false
     layoutTimeUp.visibility = View.GONE
@@ -1369,6 +1372,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var ballY = 0.5f
     private var ballVx = 0f
     private var ballVy = 0f
+    private var prevTiltX = 0f
+    private var prevTiltY = 0f
+    private var tiltInitialized = false
     private val ballPaint = Paint().apply {
       isAntiAlias = true
       style = Paint.Style.FILL
@@ -1378,6 +1384,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       textAlign = Paint.Align.CENTER
       color = android.graphics.Color.WHITE
       typeface = Typeface.DEFAULT_BOLD
+    }
+
+    fun resetBall() {
+      ballX = 0.5f
+      ballY = 0.5f
+      ballVx = 0f
+      ballVy = 0f
+      tiltInitialized = false
     }
 
     private val updateRunnable = object : Runnable {
@@ -1398,11 +1412,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       val h = height.toFloat()
       if (w <= 0f || h <= 0f) return
 
-      // Stronger tilt response so ball rolls noticeably
-      ballVx += tiltX * -0.0006f
-      ballVy += tiltY * 0.0006f
+      // Use delta tilt (change) so only active movements affect the ball,
+      // not the constant gravity bias from the accelerometer
+      if (!tiltInitialized) {
+        prevTiltX = tiltX
+        prevTiltY = tiltY
+        tiltInitialized = true
+      }
 
-      // Light friction so it keeps rolling but slows gradually
+      val deltaX = tiltX - prevTiltX
+      val deltaY = tiltY - prevTiltY
+      prevTiltX = tiltX
+      prevTiltY = tiltY
+
+      ballVx += deltaX * -0.003f
+      ballVy += deltaY * 0.003f
+
+      // Light friction so ball rolls and gradually stops
       ballVx *= 0.96f
       ballVy *= 0.96f
 
@@ -1415,8 +1441,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       ballX += ballVx
       ballY += ballVy
 
-      // Bounce off edges (keep the ball fully visible)
-      val radius = 0.06f // normalized
+      // Bounce off edges
+      val radius = 0.06f
       if (ballX < radius) {
         ballX = radius
         ballVx = -ballVx * 0.5f

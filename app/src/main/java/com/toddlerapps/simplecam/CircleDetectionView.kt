@@ -25,14 +25,14 @@ class CircleDetectionView @JvmOverloads constructor(
     private var circleDetectionCallback: (() -> Unit)? = null
     private var tapCallback: (() -> Unit)? = null
     private val minPointsForCircle = 20
-    private val minCircleRadius = 100f
+    private val minCircleRadius = 150f
 
     // Multi-touch state: tracks each finger by pointerId
     private val activePointers = mutableMapOf<Int, Pair<Float, Float>>()
-    private var tapDownTime = 0L
-    private var tapDownX = 0f
-    private var tapDownY = 0f
-    private var singleFingerDown = false
+    private val pointerDownTime = mutableMapOf<Int, Long>()
+    private val pointerDownX = mutableMapOf<Int, Float>()
+    private val pointerDownY = mutableMapOf<Int, Float>()
+    private var tapConsumed = false
 
     fun setCircleDetectionCallback(callback: () -> Unit) {
         circleDetectionCallback = callback
@@ -51,13 +51,11 @@ class CircleDetectionView @JvmOverloads constructor(
                 val y = event.getY(idx)
                 if (activePointers.isEmpty()) {
                     touchPoints.clear()
-                    tapDownTime = System.currentTimeMillis()
-                    tapDownX = x
-                    tapDownY = y
-                    singleFingerDown = true
-                } else {
-                    singleFingerDown = false
+                    tapConsumed = false
                 }
+                pointerDownTime[id] = System.currentTimeMillis()
+                pointerDownX[id] = x
+                pointerDownY[id] = y
                 activePointers[id] = Pair(x, y)
                 touchPoints.add(Pair(x, y))
             }
@@ -70,41 +68,59 @@ class CircleDetectionView @JvmOverloads constructor(
                     touchPoints.add(Pair(x, y))
                 }
                 invalidate()
-                if (touchPoints.size >= minPointsForCircle && isCircleDetected()) {
-                    circleDetectionCallback?.invoke()
-                }
             }
             MotionEvent.ACTION_POINTER_UP -> {
                 val idx = event.actionIndex
                 val id = event.getPointerId(idx)
-                activePointers.remove(id)
+                checkTap(id, event.getX(idx), event.getY(idx))
+                cleanupPointer(id)
             }
             MotionEvent.ACTION_UP -> {
                 val idx = event.actionIndex
-                val upX = event.getX(idx)
-                val upY = event.getY(idx)
-                activePointers.clear()
+                val id = event.getPointerId(idx)
                 if (touchPoints.size >= minPointsForCircle && isCircleDetected()) {
                     circleDetectionCallback?.invoke()
-                } else if (singleFingerDown) {
-                    val dist = sqrt((upX - tapDownX).pow(2) + (upY - tapDownY).pow(2))
-                    val dur = System.currentTimeMillis() - tapDownTime
-                    if (dist < 50f && dur < 500) {
-                        tapCallback?.invoke()
-                    }
+                } else {
+                    checkTap(id, event.getX(idx), event.getY(idx))
                 }
-                touchPoints.clear()
-                singleFingerDown = false
+                cleanupAll()
                 invalidate()
             }
             MotionEvent.ACTION_CANCEL -> {
-                activePointers.clear()
-                touchPoints.clear()
-                singleFingerDown = false
+                cleanupAll()
                 invalidate()
             }
         }
         return true
+    }
+
+    private fun checkTap(id: Int, upX: Float, upY: Float) {
+        if (tapConsumed) return
+        val downTime = pointerDownTime[id] ?: return
+        val downX = pointerDownX[id] ?: return
+        val downY = pointerDownY[id] ?: return
+        val dist = sqrt((upX - downX).pow(2) + (upY - downY).pow(2))
+        val dur = System.currentTimeMillis() - downTime
+        if (dist < 50f && dur < 500) {
+            tapConsumed = true
+            tapCallback?.invoke()
+        }
+    }
+
+    private fun cleanupPointer(id: Int) {
+        activePointers.remove(id)
+        pointerDownTime.remove(id)
+        pointerDownX.remove(id)
+        pointerDownY.remove(id)
+    }
+
+    private fun cleanupAll() {
+        activePointers.clear()
+        pointerDownTime.clear()
+        pointerDownX.clear()
+        pointerDownY.clear()
+        touchPoints.clear()
+        tapConsumed = false
     }
 
     private fun isCircleDetected(): Boolean {

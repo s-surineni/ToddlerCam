@@ -788,12 +788,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
           }
           canvas.drawRect(0f, 0f, w, h, springFilter)
 
-          // Falling blossom petals (gentle animation)
+          // Falling flower petals in unicorn colors
           val petalPaint = Paint().apply {
-            color = 0x88FFB7C5.toInt() // Cherry blossom pink
             style = Paint.Style.FILL
             isAntiAlias = true
           }
+          val unicornPetals = intArrayOf(
+            0xCCFFB5D5.toInt(), 0xCCD5B5FF.toInt(), 0xCCB5D5FF.toInt(),
+            0xCCB5FFD5.toInt(), 0xCCFFF5B5.toInt(), 0xCCB5E0FF.toInt(), 0xCCFFC5E0.toInt()
+          )
           if (isForSavedPhoto) {
             val numPetals = 10
             for (i in 0 until numPetals) {
@@ -801,7 +804,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
               val px = rand.nextFloat() * w
               val py = rand.nextFloat() * h
               val rx = w * 0.015f + rand.nextFloat() * (w * 0.02f)
-              val ry = rx * 0.6f
+              val ry = rx * (0.3f + rand.nextFloat() * 0.5f)
+              petalPaint.color = unicornPetals[rand.nextInt(unicornPetals.size)]
               canvas.save()
               canvas.translate(px, py)
               canvas.rotate(rand.nextFloat() * 360f)
@@ -810,11 +814,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
               canvas.restore()
             }
           } else {
+            val cycleMs = 600L
+            val baseTime = System.currentTimeMillis()
             for (i in themeOverlayView.petalX.indices) {
               val px = themeOverlayView.petalX[i]
               val py = themeOverlayView.petalY[i]
               val rx = themeOverlayView.petalSize[i]
-              val ry = rx * 0.6f
+              val ry = rx * (0.3f + (i % 3) * 0.15f)
+              val elapsed = (baseTime + i * 200L) % (cycleMs * unicornPetals.size)
+              val ci = (elapsed / cycleMs).toInt()
+              val color1 = unicornPetals.getOrElse(ci) { unicornPetals[0] }
+              val color2 = unicornPetals.getOrElse((ci + 1) % unicornPetals.size) { unicornPetals[0] }
+              val t = (elapsed % cycleMs) / cycleMs.toFloat()
+              petalPaint.color = themeOverlayView.blendColor(color1, color2, t)
               canvas.save()
               canvas.translate(px, py)
               canvas.rotate(themeOverlayView.petalRot[i])
@@ -850,11 +862,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
           }
           canvas.drawRect(0f, 0f, w, h, rainyFilter)
 
-          // Gentle falling raindrops (thin slanted lines)
+          // Falling raindrops (teardrop shapes)
           val rainPaint = Paint().apply {
-            color = 0x55FFFFFF.toInt() // Very soft white
-            strokeWidth = w * 0.003f
-            style = Paint.Style.STROKE
+            color = 0x88FFFFFF.toInt()
+            style = Paint.Style.FILL
             isAntiAlias = true
           }
           if (isForSavedPhoto) {
@@ -863,15 +874,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
               val rand = java.util.Random((i * 1234).toLong())
               val rx = rand.nextFloat() * w
               val ry = rand.nextFloat() * h
-              val length = h * 0.05f
-              canvas.drawLine(rx, ry, rx - length * 0.15f, ry + length, rainPaint)
+              val size = w * 0.015f + rand.nextFloat() * (w * 0.015f)
+              canvas.save()
+              canvas.translate(rx, ry)
+              canvas.scale(size, size)
+              canvas.drawPath(themeOverlayView.raindropPath, rainPaint)
+              canvas.restore()
             }
           } else {
             for (i in themeOverlayView.rainX.indices) {
-              val rx = themeOverlayView.rainX[i]
-              val ry = themeOverlayView.rainY[i]
-              val length = h * 0.05f
-              canvas.drawLine(rx, ry, rx - length * 0.15f, ry + length, rainPaint)
+              canvas.save()
+              canvas.translate(themeOverlayView.rainX[i], themeOverlayView.rainY[i])
+              val size = w * 0.018f
+              canvas.scale(size, size)
+              canvas.drawPath(themeOverlayView.raindropPath, rainPaint)
+              canvas.restore()
             }
           }
         }
@@ -1400,6 +1417,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var ballVx = 0f
     private var ballVy = 0f
     private val starPath = Path()
+    val raindropPath = Path().apply {
+      // Teardrop/raindrop: pointed top, rounded bottom, size = 1.0
+      moveTo(0f, -1f)
+      cubicTo(0.45f, -0.35f, 0.5f, 0.3f, 0f, 1f)
+      cubicTo(-0.5f, 0.3f, -0.45f, -0.35f, 0f, -1f)
+      close()
+    }
     private val ballPaint = Paint().apply {
       isAntiAlias = true
       style = Paint.Style.FILL
@@ -1508,16 +1532,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       0xFFFFC5E0.toInt(), // light rose
     )
 
-    private fun buildStarPath(cx: Float, cy: Float, r: Float) {
+    private fun buildStarPath(r: Float) {
       starPath.reset()
-      val outer = r
-      val inner = r * 0.4f
       val points = 5
       for (i in 0 until points * 2) {
         val angle = Math.toRadians((-90.0 + i * 360.0 / (points * 2))).toFloat()
-        val radius = if (i % 2 == 0) outer else inner
-        val x = cx + kotlin.math.cos(angle) * radius
-        val y = cy + kotlin.math.sin(angle) * radius
+        val radius = if (i % 2 == 0) r else r * 0.4f
+        val x = kotlin.math.cos(angle) * radius
+        val y = kotlin.math.sin(angle) * radius
         if (i == 0) starPath.moveTo(x, y) else starPath.lineTo(x, y)
       }
       starPath.close()
@@ -1625,23 +1647,28 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       val t = (elapsed % cycleMs) / cycleMs.toFloat()
       val blendedColor = blendColor(color, nextColor, t)
 
-      buildStarPath(cx, cy, r)
+      buildStarPath(r)
 
-      // Star body
-      ballPaint.color = blendedColor
-      canvas.drawPath(starPath, ballPaint)
+      // Triple nested stars: outer, middle, inner
+      val scales = floatArrayOf(1f, 0.6f, 0.3f)
+      for (scale in scales) {
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.scale(scale, scale)
+        ballPaint.color = blendedColor
+        canvas.drawPath(starPath, ballPaint)
+        canvas.restore()
 
-      // Star stroke
-      ballStrokePaint.color = 0xAAFFFFFF.toInt()
-      canvas.drawPath(starPath, ballStrokePaint)
-
-      // Letter "D"
-      ballTextPaint.textSize = r * 1.1f
-      val textY = cy - (ballTextPaint.descent() + ballTextPaint.ascent()) / 2
-      canvas.drawText("D", cx, textY, ballTextPaint)
+        canvas.save()
+        canvas.translate(cx, cy)
+        canvas.scale(scale, scale)
+        ballStrokePaint.color = 0xAAFFFFFF.toInt()
+        canvas.drawPath(starPath, ballStrokePaint)
+        canvas.restore()
+      }
     }
 
-    private fun blendColor(c1: Int, c2: Int, t: Float): Int {
+    fun blendColor(c1: Int, c2: Int, t: Float): Int {
       val a = (Color.alpha(c1) + ((Color.alpha(c2) - Color.alpha(c1)) * t).toInt()).coerceIn(0, 255)
       val r = (Color.red(c1) + ((Color.red(c2) - Color.red(c1)) * t).toInt()).coerceIn(0, 255)
       val g = (Color.green(c1) + ((Color.green(c2) - Color.green(c1)) * t).toInt()).coerceIn(0, 255)

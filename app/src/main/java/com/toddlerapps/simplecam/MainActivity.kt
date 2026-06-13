@@ -1093,12 +1093,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     fun updateTimeButtonStyles() {
       timeOptions.forEachIndexed { index, btn ->
         val isSelected = timeValues[index] == selectedTime
-        btn.backgroundTintList = if (isSelected) {
-          android.content.res.ColorStateList.valueOf(0xFF3F51B5.toInt())
+        if (isSelected) {
+          btn.setBackgroundColor(0xFF3F51B5.toInt())
+          btn.setTextColor(android.graphics.Color.WHITE)
         } else {
-          null
+          btn.setBackgroundResource(R.drawable.card_sub_option)
+          btn.setTextColor(0xFF333333.toInt())
         }
-        btn.setTextColor(if (isSelected) android.graphics.Color.WHITE else 0xFF333333.toInt())
       }
     }
     selectedTime = playTimeLimitMinutes

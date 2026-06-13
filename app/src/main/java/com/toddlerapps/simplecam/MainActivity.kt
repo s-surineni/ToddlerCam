@@ -1310,8 +1310,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     val rand = java.util.Random()
-    val largeEmojis = setOf("🐱", "🐶", "🐮", "🦆", "⚽", "🏀", "🏈", "🎾", "🧶", "🧸", "🚗", "🚒", "🚜", "🚂", "🚤", "🎃", "🌈", "🐰", "🐸", "🐧", "🐿️")
-    emojis.forEachIndexed { index, emoji ->
+    val largeEmojis = setOf("🐱", "🐶", "🐮", "🦆", "⚽", "🏀", "🏈", "🎾", "🧶", "🧸", "🚗", "🚒", "🚜", "🚂", "🚤", "🎃", "🌈", "🐰", "🐸", "🐧", "🐿️", "🦕", "🦄", "✈️", "📚", "🚁", "🚀", "🐘", "🦁", "🐯", "🐧", "🦊", "🐼", "🐨", "🐵", "🦉")
+
+    // Add 3 random educational toy stickers to every mode
+    val toyEmojis = listOf("🦕", "🦄", "🚗", "✈️", "📚", "🚁", "🚀", "🐘", "🦁", "🐯", "🦊", "🐼", "🐨", "🐵", "🦉", "🎨", "🧩", "🎵", "🔬", "🌍", "⭐", "🌈", "🍎", "🚲", "⛵", "🏰", "🎪", "🎠", "🪐", "🤖")
+    val shuffledToys = toyEmojis.shuffled(rand).take(3)
+
+    val allEmojis = emojis + shuffledToys
+    allEmojis.forEachIndexed { index, emoji ->
       val x = 0.15f + (index % 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
       val y = 0.2f + (index / 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
       val vx = (rand.nextFloat() - 0.5f) * 0.006f

@@ -1402,8 +1402,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             updateBallPhysics()
           }
           invalidate()
-          postOnAnimation(this)
         }
+        postOnAnimation(this)
       }
     }
 

@@ -71,9 +71,11 @@ import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.BitmapDrawable
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -90,59 +92,19 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
   // Sensor properties for device tilt
   private lateinit var sensorManager: SensorManager
-  private var accelerometer: Sensor? = null
-  private var tiltX = 0f
-  private var tiltY = 0f
+  private var gameRotation: Sensor? = null
+  // Orientation angles from game rotation vector (radians)
+  private var tiltRoll = 0f // positive = right side down → ball rolls right
+  private var tiltPitch = 0f // positive = top tilting away/forward → ball rolls down
 
-  // Sticker data model
+  // Sticker data model (static position, no physics)
   class Sticker(
     val emoji: String,
     var x: Float, // Normalized (0.0 to 1.0)
     var y: Float, // Normalized (0.0 to 1.0)
-    var vx: Float,
-    var vy: Float,
     val sizePercent: Float = 0.08f
   ) {
-    fun update(width: Float, height: Float, tiltX: Float, tiltY: Float) {
-      // Accelerometer forces: tiltX tilts left/right (accelerometer X), tiltY tilts forward/backward (accelerometer Y)
-      vx += tiltX * -0.00008f
-      vy += tiltY * 0.00008f
-
-      // Apply drag / friction
-      vx *= 0.97f
-      vy *= 0.97f
-
-      // Cap speed
-      val maxSpeed = 0.012f
-      vx = vx.coerceIn(-maxSpeed, maxSpeed)
-      vy = vy.coerceIn(-maxSpeed, maxSpeed)
-
-      // Move
-      x += vx
-      y += vy
-
-      // Bounce boundaries (using normalized coordinates to be resolution independent)
-      val minX = sizePercent * 0.5f
-      val maxX = 1.0f - sizePercent * 0.5f
-      val minY = 0.12f + sizePercent * 0.5f
-      val maxY = 0.88f - sizePercent * 0.5f
-
-      if (x < minX) {
-        x = minX
-        vx = -vx * 0.6f // Lose some speed on bounce
-      } else if (x > maxX) {
-        x = maxX
-        vx = -vx * 0.6f
-      }
-
-      if (y < minY) {
-        y = minY
-        vy = -vy * 0.6f
-      } else if (y > maxY) {
-        y = maxY
-        vy = -vy * 0.6f
-      }
-    }
+    fun update() {}
   }
 
   private val currentStickers = mutableListOf<Sticker>()
@@ -220,9 +182,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     layoutTimeUp = findViewById(R.id.layout_time_up)
     cameraExecutor = Executors.newSingleThreadExecutor()
 
-    // Initialize accelerometer sensors
+    // Initialize accelerometer sensor
     sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-    accelerometer = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+    gameRotation = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
 
     // Bind selection views
     tvCameraBanner = findViewById(R.id.tv_camera_banner)
@@ -245,7 +207,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     btnSettings = findViewById(R.id.btn_settings)
 
     // Load saved preferences
-    val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+    val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
     savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", true)
     playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 30)
     useFrontCamera = prefs.getBoolean("use_front_camera", false)
@@ -255,7 +217,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     Executors.newSingleThreadExecutor().execute {
       try {
         cacheDir.listFiles()?.forEach { file ->
-          if (file.name.startsWith("ToddlerCam_")) {
+          if (file.name.startsWith("GiggleCam_")) {
             file.delete()
           }
         }
@@ -278,6 +240,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
 
     // Show selection screen by default
+    generateMosaicBackground()
     showSelectionScreen()
 
     // Keep screen on
@@ -365,7 +328,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       provider.unbindAll()
       provider.bindToLifecycle(this, selector, preview, imageCapture)
     } catch (exc: Exception) {
-      android.util.Log.e("ToddlerCam", "Camera use case binding failed", exc)
+      android.util.Log.e("GiggleCam", "Camera use case binding failed", exc)
       runOnUiThread {
         android.widget.Toast.makeText(this@MainActivity, "Failed to switch camera.", android.widget.Toast.LENGTH_LONG).show()
       }
@@ -388,12 +351,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     } else if (requestCode == storagePermissionRequestCode) {
       if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
         savePhotosToGallery = true
-        val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("save_photos_to_gallery", true).apply()
         android.widget.Toast.makeText(this, "Storage permission granted! Photos will be saved.", android.widget.Toast.LENGTH_SHORT).show()
       } else {
         savePhotosToGallery = false
-        val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
         prefs.edit().putBoolean("save_photos_to_gallery", false).apply()
         android.widget.Toast.makeText(
           this,
@@ -414,8 +377,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
     checkLockTaskMode()
 
-    // Register accelerometer listener for sticker tilting physics
-    accelerometer?.let {
+    // Register game rotation sensor for tilt sensing
+    gameRotation?.let {
       sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_GAME)
     }
   }
@@ -465,11 +428,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
   private fun hideSystemUI() {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-      // Android 11+ - Modern approach
-      window.insetsController?.hide(WindowInsets.Type.systemBars())
+      window.setDecorFitsSystemWindows(false)
+      window.insetsController?.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
       window.insetsController?.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     } else {
-      // Older Android versions - Deprecated but still works
       @Suppress("DEPRECATION")
       window.decorView.systemUiVisibility = (
         View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
@@ -503,7 +465,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     playClickSound()
 
     // Create time-stamped name with extension
-    val name = "ToddlerCam_" + SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
+    val name = "GiggleCam_" + SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
       .format(System.currentTimeMillis()) + ".jpg"
 
     // Create output options object based on preference and SDK version
@@ -531,13 +493,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       ContextCompat.getMainExecutor(this),
       object : ImageCapture.OnImageSavedCallback {
         override fun onError(exc: ImageCaptureException) {
-          android.util.Log.e("ToddlerCam", "Photo capture failed: ${exc.message}", exc)
+          android.util.Log.e("GiggleCam", "Photo capture failed: ${exc.message}", exc)
           android.widget.Toast.makeText(this@MainActivity, "Failed to save: ${exc.message}", android.widget.Toast.LENGTH_LONG).show()
         }
 
         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
           val savedUri = output.savedUri
-          android.util.Log.d("ToddlerCam", "Photo capture succeeded: $savedUri")
+          android.util.Log.d("GiggleCam", "Photo capture succeeded: $savedUri")
           
           val uriToLoad = savedUri ?: Uri.fromFile(
             if (!savePhotosToGallery) {
@@ -673,6 +635,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         4 -> Season.WINTER
         else -> Season.NONE
       }
+      if (::themeOverlayView.isInitialized) {
+        themeOverlayView.reinitializeParticles(themeOverlayView.width.toFloat(), themeOverlayView.height.toFloat())
+      }
     } else if (currentMode == Mode.ANIMALS) {
       currentAnimal = when (index) {
         1 -> Animal.CAT
@@ -730,6 +695,29 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     currentSeason = Season.NONE
     currentAnimal = Animal.NONE
     themeOverlayView.invalidate()
+  }
+
+  private fun generateMosaicBackground() {
+    try {
+      val display = windowManager.defaultDisplay
+      val size = android.graphics.Point()
+      display.getSize(size)
+      val cx = size.x / 2f
+      val cy = size.y / 2f
+      val radius = maxOf(size.x, size.y) * 0.7f
+      val bmp = Bitmap.createBitmap(size.x, size.y, Bitmap.Config.ARGB_8888)
+      val canvas = Canvas(bmp)
+      val shader = android.graphics.RadialGradient(
+        cx, cy, radius,
+        0xFFFBD9F8.toInt(), 0xFFFFFFFF.toInt(),
+        android.graphics.Shader.TileMode.CLAMP
+      )
+      val paint = Paint().apply { this.shader = shader }
+      canvas.drawRect(0f, 0f, size.x.toFloat(), size.y.toFloat(), paint)
+      layoutSelectionScreen.background = BitmapDrawable(resources, bmp)
+    } catch (_: Exception) {
+      // fallback: just keep the default background
+    }
   }
 
   private fun showSelectionScreen() {
@@ -800,25 +788,40 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
           }
           canvas.drawRect(0f, 0f, w, h, springFilter)
 
-          // Falling blossom petals
+          // Falling blossom petals (gentle animation)
           val petalPaint = Paint().apply {
-            color = 0xAAFFB7C5.toInt() // Cherry blossom pink
+            color = 0x88FFB7C5.toInt() // Cherry blossom pink
             style = Paint.Style.FILL
             isAntiAlias = true
           }
-          val numPetals = 15
-          for (i in 0 until numPetals) {
-            val rand = if (isForSavedPhoto) java.util.Random((i * 9999).toLong()) else java.util.Random()
-            val px = rand.nextFloat() * w
-            val py = rand.nextFloat() * h
-            val rx = w * 0.015f + rand.nextFloat() * (w * 0.02f)
-            val ry = rx * 0.6f
-            canvas.save()
-            canvas.translate(px, py)
-            canvas.rotate(rand.nextFloat() * 360f)
-            val rect = RectF(-rx, -ry, rx, ry)
-            canvas.drawOval(rect, petalPaint)
-            canvas.restore()
+          if (isForSavedPhoto) {
+            val numPetals = 10
+            for (i in 0 until numPetals) {
+              val rand = java.util.Random((i * 9999).toLong())
+              val px = rand.nextFloat() * w
+              val py = rand.nextFloat() * h
+              val rx = w * 0.015f + rand.nextFloat() * (w * 0.02f)
+              val ry = rx * 0.6f
+              canvas.save()
+              canvas.translate(px, py)
+              canvas.rotate(rand.nextFloat() * 360f)
+              val rect = RectF(-rx, -ry, rx, ry)
+              canvas.drawOval(rect, petalPaint)
+              canvas.restore()
+            }
+          } else {
+            for (i in themeOverlayView.petalX.indices) {
+              val px = themeOverlayView.petalX[i]
+              val py = themeOverlayView.petalY[i]
+              val rx = themeOverlayView.petalSize[i]
+              val ry = rx * 0.6f
+              canvas.save()
+              canvas.translate(px, py)
+              canvas.rotate(themeOverlayView.petalRot[i])
+              val rect = RectF(-rx, -ry, rx, ry)
+              canvas.drawOval(rect, petalPaint)
+              canvas.restore()
+            }
           }
         }
         Season.SUMMER -> {
@@ -847,20 +850,29 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
           }
           canvas.drawRect(0f, 0f, w, h, rainyFilter)
 
-          // Falling raindrops (slanted white lines)
+          // Gentle falling raindrops (thin slanted lines)
           val rainPaint = Paint().apply {
-            color = 0x66FFFFFF.toInt() // Semi-transparent white
-            strokeWidth = w * 0.005f
+            color = 0x55FFFFFF.toInt() // Very soft white
+            strokeWidth = w * 0.003f
             style = Paint.Style.STROKE
             isAntiAlias = true
           }
-          val numRaindrops = 30
-          for (i in 0 until numRaindrops) {
-            val rand = if (isForSavedPhoto) java.util.Random((i * 1234).toLong()) else java.util.Random()
-            val rx = rand.nextFloat() * w
-            val ry = rand.nextFloat() * h
-            val length = h * 0.06f
-            canvas.drawLine(rx, ry, rx - length * 0.15f, ry + length, rainPaint)
+          if (isForSavedPhoto) {
+            val numRaindrops = 12
+            for (i in 0 until numRaindrops) {
+              val rand = java.util.Random((i * 1234).toLong())
+              val rx = rand.nextFloat() * w
+              val ry = rand.nextFloat() * h
+              val length = h * 0.05f
+              canvas.drawLine(rx, ry, rx - length * 0.15f, ry + length, rainPaint)
+            }
+          } else {
+            for (i in themeOverlayView.rainX.indices) {
+              val rx = themeOverlayView.rainX[i]
+              val ry = themeOverlayView.rainY[i]
+              val length = h * 0.05f
+              canvas.drawLine(rx, ry, rx - length * 0.15f, ry + length, rainPaint)
+            }
           }
         }
         Season.WINTER -> {
@@ -871,26 +883,49 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
           }
           canvas.drawRect(0f, 0f, w, h, winterFilter)
 
-          // Falling snowflakes (soft white circles)
+          // Gentle falling snowflakes (drawn as 6-branch crystal shapes)
           val snowPaint = Paint().apply {
-            color = Color.WHITE
-            style = Paint.Style.FILL
+            color = 0xAAFFFFFF.toInt() // Soft white
+            style = Paint.Style.STROKE
+            strokeWidth = w * 0.004f
+            strokeCap = Paint.Cap.ROUND
             isAntiAlias = true
           }
-          val numSnowflakes = 25
-          for (i in 0 until numSnowflakes) {
-            val rand = if (isForSavedPhoto) java.util.Random((i * 5678).toLong()) else java.util.Random()
-            val sx = rand.nextFloat() * w
-            val sy = rand.nextFloat() * h
-            val radius = w * 0.008f + rand.nextFloat() * (w * 0.012f)
-            canvas.drawCircle(sx, sy, radius, snowPaint)
+          if (isForSavedPhoto) {
+            val numSnowflakes = 10
+            for (i in 0 until numSnowflakes) {
+              val rand = java.util.Random((i * 5678).toLong())
+              val sx = rand.nextFloat() * w
+              val sy = rand.nextFloat() * h
+              val size = w * 0.008f + rand.nextFloat() * (w * 0.01f)
+              canvas.save()
+              canvas.translate(sx, sy)
+              canvas.rotate(rand.nextFloat() * 360f)
+              for (j in 0 until 3) {
+                canvas.drawLine(0f, -size, 0f, size, snowPaint)
+                canvas.rotate(60f)
+              }
+              canvas.restore()
+            }
+          } else {
+            for (i in themeOverlayView.snowX.indices) {
+              canvas.save()
+              canvas.translate(themeOverlayView.snowX[i], themeOverlayView.snowY[i])
+              canvas.rotate(themeOverlayView.snowRot[i])
+              val size = themeOverlayView.snowSize[i]
+              for (j in 0 until 3) {
+                canvas.drawLine(0f, -size, 0f, size, snowPaint)
+                canvas.rotate(60f)
+              }
+              canvas.restore()
+            }
           }
         }
         else -> {}
       }
     }
 
-    // 2. Draw drifting physics stickers (drift, bounce, tilt with accelerometer)
+    // 2. Draw static themed stickers
     if (currentStickers.isNotEmpty()) {
       val stickerPaint = Paint().apply {
         isAntiAlias = true
@@ -994,7 +1029,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       rotatedBitmap.recycle()
       mutableBitmap.recycle()
     } catch (e: Exception) {
-      android.util.Log.e("ToddlerCam", "Error decorating photo: ${e.message}", e)
+      android.util.Log.e("GiggleCam", "Error decorating photo: ${e.message}", e)
     }
   }
 
@@ -1155,7 +1190,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       useFrontCamera = switchFront.isChecked
       showStickers = switchStickers.isChecked
       
-      val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
+      val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
       prefs.edit().putBoolean("save_photos_to_gallery", savePhotosToGallery).apply()
       prefs.edit().putInt("play_time_limit_minutes", playTimeLimitMinutes).apply()
       prefs.edit().putBoolean("use_front_camera", useFrontCamera).apply()
@@ -1301,9 +1336,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   }
 
   override fun onSensorChanged(event: SensorEvent?) {
-    if (event?.sensor?.type == Sensor.TYPE_ACCELEROMETER) {
-      tiltX = event.values[0]
-      tiltY = event.values[1]
+    if (event?.sensor?.type == Sensor.TYPE_GAME_ROTATION_VECTOR) {
+      val rotationMatrix = FloatArray(9)
+      SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
+      val orientation = FloatArray(3)
+      SensorManager.getOrientation(rotationMatrix, orientation)
+      tiltRoll = orientation[2]  // roll (+ = right side down)
+      tiltPitch = orientation[1] // pitch (+ = top tilting forward/away)
     }
   }
 
@@ -1346,38 +1385,30 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     allEmojis.forEachIndexed { index, emoji ->
       val x = 0.15f + (index % 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
       val y = 0.2f + (index / 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
-      val vx = (rand.nextFloat() - 0.5f) * 0.006f
-      val vy = (rand.nextFloat() - 0.5f) * 0.006f
-      
+
       val isLarge = emoji in largeEmojis
       val size = if (isLarge) 0.14f else 0.08f
 
-      currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.1f, 0.9f), vx, vy, size))
-    }
-  }
-
-  private fun updateStickersPhysics() {
-    val w = themeOverlayView.width.toFloat()
-    val h = themeOverlayView.height.toFloat()
-    if (w <= 0f || h <= 0f) return
-
-    currentStickers.forEach { sticker ->
-      sticker.update(w, h, tiltX, tiltY)
+      currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.1f, 0.9f), size))
     }
   }
 
   inner class ThemeOverlayView(context: Context) : View(context) {
-    // Tilt-sensitive ball with letter "D"
+    // Tilt-sensitive star with letter "D" and unicorn rainbow colors
     private var ballX = 0.5f
     private var ballY = 0.5f
     private var ballVx = 0f
     private var ballVy = 0f
-    private var prevTiltX = 0f
-    private var prevTiltY = 0f
-    private var tiltInitialized = false
+    private val starPath = Path()
     private val ballPaint = Paint().apply {
       isAntiAlias = true
       style = Paint.Style.FILL
+    }
+    private val ballStrokePaint = Paint().apply {
+      isAntiAlias = true
+      style = Paint.Style.STROKE
+      strokeWidth = 3f
+      strokeJoin = Paint.Join.ROUND
     }
     private val ballTextPaint = Paint().apply {
       isAntiAlias = true
@@ -1385,22 +1416,127 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       color = android.graphics.Color.WHITE
       typeface = Typeface.DEFAULT_BOLD
     }
+    // Gentle falling particles for weather effects
+    val rainX = FloatArray(12)
+    val rainY = FloatArray(12)
+    val rainSpeed = FloatArray(12)
+    val snowX = FloatArray(10)
+    val snowY = FloatArray(10)
+    val snowVx = FloatArray(10)
+    val snowVy = FloatArray(10)
+    val snowSize = FloatArray(10)
+    val snowRot = FloatArray(10)
+    val petalX = FloatArray(10)
+    val petalY = FloatArray(10)
+    val petalVx = FloatArray(10)
+    val petalVy = FloatArray(10)
+    val petalRot = FloatArray(10)
+    val petalSize = FloatArray(10)
+
+    fun reinitializeParticles(w: Float, h: Float) {
+      if (w <= 0f || h <= 0f) return
+      val rand = java.util.Random()
+      for (i in rainX.indices) {
+        rainX[i] = rand.nextFloat() * w
+        rainY[i] = rand.nextFloat() * h
+        rainSpeed[i] = h * (0.005f + rand.nextFloat() * 0.003f)
+      }
+      for (i in snowX.indices) {
+        snowX[i] = rand.nextFloat() * w
+        snowY[i] = rand.nextFloat() * h
+        snowVx[i] = (rand.nextFloat() - 0.5f) * 1.5f
+        snowVy[i] = h * (0.004f + rand.nextFloat() * 0.003f)
+        snowSize[i] = 6f + rand.nextFloat() * 6f
+        snowRot[i] = rand.nextFloat() * 360f
+      }
+      for (i in petalX.indices) {
+        petalX[i] = rand.nextFloat() * w
+        petalY[i] = rand.nextFloat() * h
+        petalVx[i] = (rand.nextFloat() - 0.5f) * 0.8f
+        petalVy[i] = h * (0.004f + rand.nextFloat() * 0.003f)
+        petalRot[i] = rand.nextFloat() * 360f
+        petalSize[i] = 6f + rand.nextFloat() * 8f
+      }
+    }
+
+    fun updateParticles(w: Float, h: Float) {
+      if (w <= 0f || h <= 0f) return
+      when (currentSeason) {
+        Season.AUTUMN -> {
+          for (i in rainX.indices) {
+            rainY[i] += rainSpeed[i]
+            rainX[i] -= rainSpeed[i] * 0.15f
+            if (rainY[i] > h) {
+              rainY[i] = -10f
+              rainX[i] = java.util.Random().nextFloat() * w
+            }
+          }
+        }
+        Season.WINTER -> {
+          for (i in snowX.indices) {
+            snowX[i] += snowVx[i]
+            snowY[i] += snowVy[i]
+            snowRot[i] += 0.8f
+            if (snowY[i] > h) {
+              snowY[i] = -5f
+              snowX[i] = java.util.Random().nextFloat() * w
+            }
+          }
+        }
+        Season.SPRING -> {
+          for (i in petalX.indices) {
+            petalX[i] += petalVx[i]
+            petalY[i] += petalVy[i]
+            petalRot[i] += 0.5f
+            if (petalY[i] > h) {
+              petalY[i] = -10f
+              petalX[i] = java.util.Random().nextFloat() * w
+            }
+          }
+        }
+        else -> {}
+      }
+    }
+
+    private val unicornColors = intArrayOf(
+      0xFFFFB5D5.toInt(), // pastel pink
+      0xFFD5B5FF.toInt(), // pastel purple
+      0xFFB5D5FF.toInt(), // pastel blue
+      0xFFB5FFD5.toInt(), // pastel mint
+      0xFFFFF5B5.toInt(), // pastel yellow
+      0xFFB5E0FF.toInt(), // pastel sky blue
+      0xFFFFC5E0.toInt(), // light rose
+    )
+
+    private fun buildStarPath(cx: Float, cy: Float, r: Float) {
+      starPath.reset()
+      val outer = r
+      val inner = r * 0.4f
+      val points = 5
+      for (i in 0 until points * 2) {
+        val angle = Math.toRadians((-90.0 + i * 360.0 / (points * 2))).toFloat()
+        val radius = if (i % 2 == 0) outer else inner
+        val x = cx + kotlin.math.cos(angle) * radius
+        val y = cy + kotlin.math.sin(angle) * radius
+        if (i == 0) starPath.moveTo(x, y) else starPath.lineTo(x, y)
+      }
+      starPath.close()
+    }
 
     fun resetBall() {
       ballX = 0.5f
       ballY = 0.5f
       ballVx = 0f
       ballVy = 0f
-      tiltInitialized = false
     }
 
     private val updateRunnable = object : Runnable {
       override fun run() {
         if (currentMode != Mode.NONE) {
-          updateStickersPhysics()
           if (showStickers) {
             updateBallPhysics()
           }
+          updateParticles(width.toFloat(), height.toFloat())
           invalidate()
         }
         postOnAnimation(this)
@@ -1412,28 +1548,23 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       val h = height.toFloat()
       if (w <= 0f || h <= 0f) return
 
-      // Use delta tilt (change) so only active movements affect the ball,
-      // not the constant gravity bias from the accelerometer
-      if (!tiltInitialized) {
-        prevTiltX = tiltX
-        prevTiltY = tiltY
-        tiltInitialized = true
-      }
+      // Use game rotation vector:
+      //   tiltRoll (+) = right side down → ball rolls right (+X)
+      //   tiltPitch (+) = top tilting forward/away → ball rolls up (-Y)
+      // Dead zone ~5° (0.08 rad) so star doesn't drift at neutral
+      val dz = 0.08f
+      val roll = if (kotlin.math.abs(tiltRoll) > dz) tiltRoll else 0f
+      val pitch = if (kotlin.math.abs(tiltPitch) > dz) tiltPitch else 0f
 
-      val deltaX = tiltX - prevTiltX
-      val deltaY = tiltY - prevTiltY
-      prevTiltX = tiltX
-      prevTiltY = tiltY
+      ballVx += roll * 0.005f
+      ballVy -= pitch * 0.005f
 
-      ballVx += deltaX * -0.003f
-      ballVy += deltaY * 0.003f
-
-      // Light friction so ball rolls and gradually stops
+      // Friction so star settles when held steady
       ballVx *= 0.96f
       ballVy *= 0.96f
 
       // Cap speed
-      val maxSpeed = 0.025f
+      val maxSpeed = 0.04f
       ballVx = ballVx.coerceIn(-maxSpeed, maxSpeed)
       ballVy = ballVy.coerceIn(-maxSpeed, maxSpeed)
 
@@ -1485,17 +1616,37 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       val cy = ballY * h
       val r = w * 0.06f
 
-      // Ball body gradient
-      ballPaint.color = 0xFFFF6F00.toInt() // orange
-      canvas.drawCircle(cx, cy, r, ballPaint)
-      // Inner lighter circle for 3D look
-      ballPaint.color = 0x33FFFFFF.toInt()
-      canvas.drawCircle(cx - r * 0.2f, cy - r * 0.2f, r * 0.7f, ballPaint)
+      // Blinking unicorn colors based on time
+      val cycleMs = 600L
+      val elapsed = System.currentTimeMillis() % (cycleMs * unicornColors.size)
+      val colorIndex = (elapsed / cycleMs).toInt()
+      val color = unicornColors.getOrElse(colorIndex) { unicornColors[0] }
+      val nextColor = unicornColors.getOrElse((colorIndex + 1) % unicornColors.size) { unicornColors[0] }
+      val t = (elapsed % cycleMs) / cycleMs.toFloat()
+      val blendedColor = blendColor(color, nextColor, t)
+
+      buildStarPath(cx, cy, r)
+
+      // Star body
+      ballPaint.color = blendedColor
+      canvas.drawPath(starPath, ballPaint)
+
+      // Star stroke
+      ballStrokePaint.color = 0xAAFFFFFF.toInt()
+      canvas.drawPath(starPath, ballStrokePaint)
 
       // Letter "D"
-      ballTextPaint.textSize = r * 1.3f
+      ballTextPaint.textSize = r * 1.1f
       val textY = cy - (ballTextPaint.descent() + ballTextPaint.ascent()) / 2
       canvas.drawText("D", cx, textY, ballTextPaint)
+    }
+
+    private fun blendColor(c1: Int, c2: Int, t: Float): Int {
+      val a = (Color.alpha(c1) + ((Color.alpha(c2) - Color.alpha(c1)) * t).toInt()).coerceIn(0, 255)
+      val r = (Color.red(c1) + ((Color.red(c2) - Color.red(c1)) * t).toInt()).coerceIn(0, 255)
+      val g = (Color.green(c1) + ((Color.green(c2) - Color.green(c1)) * t).toInt()).coerceIn(0, 255)
+      val b = (Color.blue(c1) + ((Color.blue(c2) - Color.blue(c1)) * t).toInt()).coerceIn(0, 255)
+      return Color.argb(a, r, g, b)
     }
   }
 }

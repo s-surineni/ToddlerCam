@@ -14,10 +14,31 @@ android {
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 
+  def keystorePropsFile = rootProject.file('key.properties')
+  def hasSigningConfig = keystorePropsFile.exists()
+  def keystoreProps = new Properties()
+  if (hasSigningConfig) {
+    keystoreProps.load(new FileInputStream(keystorePropsFile))
+  }
+
+  signingConfigs {
+    if (hasSigningConfig) {
+      release {
+        storeFile file(keystoreProps['storeFile'])
+        storePassword keystoreProps['storePassword']
+        keyAlias keystoreProps['keyAlias']
+        keyPassword keystoreProps['keyPassword']
+      }
+    }
+  }
+
   buildTypes {
     release {
-      minifyEnabled false
-      proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+      minifyEnabled true
+      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+      if (hasSigningConfig) {
+        signingConfig signingConfigs.release
+      }
     }
   }
 

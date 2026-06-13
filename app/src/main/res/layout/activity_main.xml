@@ -156,11 +156,16 @@
             android:id="@+id/tv_selection_title"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="ToddlerCam 📸"
-            android:textColor="#FF4081"
+            android:text="GiggleCam 📸"
+            android:background="@drawable/title_background"
+            android:textColor="#FFFFFF"
             android:textSize="36sp"
             android:textStyle="bold"
             android:gravity="center"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
             android:layout_marginBottom="8dp" />
 
         <TextView

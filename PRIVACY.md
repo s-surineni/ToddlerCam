@@ -1,14 +1,14 @@
-# Privacy Policy for ToddlerCam
+# Privacy Policy for GiggleCam
 
 **Last updated:** June 2026
 
 ## Summary
 
-ToddlerCam is designed with your child's privacy as the highest priority. **The app has no internet access and never sends any data anywhere.**
+GiggleCam is designed with your child's privacy as the highest priority. **The app has no internet access and never sends any data anywhere.**
 
 ## Data Collection
 
-ToddlerCam **does not collect, store, or transmit** any personal data, usage data, or analytics.
+GiggleCam **does not collect, store, or transmit** any personal data, usage data, or analytics.
 
 ## Camera & Photos
 
@@ -16,7 +16,7 @@ ToddlerCam **does not collect, store, or transmit** any personal data, usage dat
 - **No camera feed, photos, or video data are ever sent to any server.**
 - Photos you choose to save are stored locally in your device's gallery.
 - Photos you do not save are discarded when the app session ends.
-- ToddlerCam has no internet permission and cannot transmit data over a network.
+- GiggleCam has no internet permission and cannot transmit data over a network.
 
 ## Permissions
 
@@ -25,11 +25,11 @@ ToddlerCam **does not collect, store, or transmit** any personal data, usage dat
 
 ## Third-Party Services
 
-ToddlerCam uses **no third-party analytics, advertising, or tracking services**. It contains no SDKs that collect or transmit data.
+GiggleCam uses **no third-party analytics, advertising, or tracking services**. It contains no SDKs that collect or transmit data.
 
 ## Children's Privacy
 
-ToddlerCam is specifically designed for use by young children. The app does not knowingly collect any personal information from children or anyone else.
+GiggleCam is specifically designed for use by young children. The app does not knowingly collect any personal information from children or anyone else.
 
 ## Changes to This Policy
 

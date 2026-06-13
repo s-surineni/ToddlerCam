@@ -20,5 +20,10 @@ bin/
 gen/
 out/
 
+# Keystore and signing config
+*.jks
+*.keystore
+key.properties
+
 # Log files
 *.log

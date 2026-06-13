@@ -59,7 +59,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="3. Open ToddlerCam, swipe up (or hold Overview/Back) and tap Pin."
+            android:text="3. Open GiggleCam, swipe up (or hold Overview/Back) and tap Pin."
             android:textColor="#555555"
             android:textSize="13sp" />
 

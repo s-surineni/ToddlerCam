@@ -1,8 +1,8 @@
-# ToddlerCam
+# GiggleCam
 
 A child-friendly camera app for toddlers with themed decorations, stickers, and filters — all processed entirely on your device.
 
-**Your privacy is guaranteed:** ToddlerCam uses no internet permission and makes zero network connections. No camera feed, photos, or any data are ever sent to any server. Everything — from camera preview to photo capture and decoration — stays 100% on your device.
+**Your privacy is guaranteed:** GiggleCam uses no internet permission and makes zero network connections. No camera feed, photos, or any data are ever sent to any server. Everything — from camera preview to photo capture and decoration — stays 100% on your device.
 
 Features:
 - Full-screen camera with themed play modes (Seasons, Animals)

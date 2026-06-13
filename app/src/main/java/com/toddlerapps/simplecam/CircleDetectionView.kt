@@ -27,9 +27,12 @@ class CircleDetectionView @JvmOverloads constructor(
     private val minPointsForCircle = 20
     private val minCircleRadius = 100f
 
-    private var downTime = 0L
-    private var downX = 0f
-    private var downY = 0f
+    // Multi-touch state: tracks each finger by pointerId
+    private val activePointers = mutableMapOf<Int, Pair<Float, Float>>()
+    private var tapDownTime = 0L
+    private var tapDownX = 0f
+    private var tapDownY = 0f
+    private var singleFingerDown = false
 
     fun setCircleDetectionCallback(callback: () -> Unit) {
         circleDetectionCallback = callback
@@ -40,46 +43,64 @@ class CircleDetectionView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.action) {
-            MotionEvent.ACTION_DOWN -> {
-                downTime = System.currentTimeMillis()
-                downX = event.x
-                downY = event.y
-                touchPoints.clear()
-                touchPoints.add(Pair(event.x, event.y))
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
+                val idx = event.actionIndex
+                val id = event.getPointerId(idx)
+                val x = event.getX(idx)
+                val y = event.getY(idx)
+                if (activePointers.isEmpty()) {
+                    touchPoints.clear()
+                    tapDownTime = System.currentTimeMillis()
+                    tapDownX = x
+                    tapDownY = y
+                    singleFingerDown = true
+                } else {
+                    singleFingerDown = false
+                }
+                activePointers[id] = Pair(x, y)
+                touchPoints.add(Pair(x, y))
             }
             MotionEvent.ACTION_MOVE -> {
-                touchPoints.add(Pair(event.x, event.y))
+                for (i in 0 until event.pointerCount) {
+                    val id = event.getPointerId(i)
+                    val x = event.getX(i)
+                    val y = event.getY(i)
+                    activePointers[id] = Pair(x, y)
+                    touchPoints.add(Pair(x, y))
+                }
                 invalidate()
-                
-                // Check if circle is detected
-                if (touchPoints.size >= minPointsForCircle) {
-                    if (isCircleDetected()) {
-                        circleDetectionCallback?.invoke()
-                    }
+                if (touchPoints.size >= minPointsForCircle && isCircleDetected()) {
+                    circleDetectionCallback?.invoke()
                 }
             }
+            MotionEvent.ACTION_POINTER_UP -> {
+                val idx = event.actionIndex
+                val id = event.getPointerId(idx)
+                activePointers.remove(id)
+            }
             MotionEvent.ACTION_UP -> {
-                var isCircle = false
-                if (touchPoints.size >= minPointsForCircle) {
-                    if (isCircleDetected()) {
-                        circleDetectionCallback?.invoke()
-                        isCircle = true
-                    }
-                }
-                
-                if (!isCircle) {
-                    val upTime = System.currentTimeMillis()
-                    val upX = event.x
-                    val upY = event.y
-                    val distance = sqrt((upX - downX).pow(2) + (upY - downY).pow(2))
-                    val duration = upTime - downTime
-                    
-                    if (distance < 50f && duration < 500) {
+                val idx = event.actionIndex
+                val upX = event.getX(idx)
+                val upY = event.getY(idx)
+                activePointers.clear()
+                if (touchPoints.size >= minPointsForCircle && isCircleDetected()) {
+                    circleDetectionCallback?.invoke()
+                } else if (singleFingerDown) {
+                    val dist = sqrt((upX - tapDownX).pow(2) + (upY - tapDownY).pow(2))
+                    val dur = System.currentTimeMillis() - tapDownTime
+                    if (dist < 50f && dur < 500) {
                         tapCallback?.invoke()
                     }
                 }
                 touchPoints.clear()
+                singleFingerDown = false
+                invalidate()
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                activePointers.clear()
+                touchPoints.clear()
+                singleFingerDown = false
                 invalidate()
             }
         }

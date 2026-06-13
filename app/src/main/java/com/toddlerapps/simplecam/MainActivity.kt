@@ -1364,13 +1364,72 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   }
 
   inner class ThemeOverlayView(context: Context) : View(context) {
+    // Tilt-sensitive ball with letter "D"
+    private var ballX = 0.5f
+    private var ballY = 0.5f
+    private var ballVx = 0f
+    private var ballVy = 0f
+    private val ballPaint = Paint().apply {
+      isAntiAlias = true
+      style = Paint.Style.FILL
+    }
+    private val ballTextPaint = Paint().apply {
+      isAntiAlias = true
+      textAlign = Paint.Align.CENTER
+      color = android.graphics.Color.WHITE
+      typeface = Typeface.DEFAULT_BOLD
+    }
+
     private val updateRunnable = object : Runnable {
       override fun run() {
         if (currentMode != Mode.NONE) {
           updateStickersPhysics()
+          if (showStickers) {
+            updateBallPhysics()
+          }
           invalidate()
           postOnAnimation(this)
         }
+      }
+    }
+
+    private fun updateBallPhysics() {
+      val w = width.toFloat()
+      val h = height.toFloat()
+      if (w <= 0f || h <= 0f) return
+
+      // Stronger tilt response so ball rolls noticeably
+      ballVx += tiltX * -0.0006f
+      ballVy += tiltY * 0.0006f
+
+      // Light friction so it keeps rolling but slows gradually
+      ballVx *= 0.96f
+      ballVy *= 0.96f
+
+      // Cap speed
+      val maxSpeed = 0.025f
+      ballVx = ballVx.coerceIn(-maxSpeed, maxSpeed)
+      ballVy = ballVy.coerceIn(-maxSpeed, maxSpeed)
+
+      // Move (normalized 0..1)
+      ballX += ballVx
+      ballY += ballVy
+
+      // Bounce off edges (keep the ball fully visible)
+      val radius = 0.06f // normalized
+      if (ballX < radius) {
+        ballX = radius
+        ballVx = -ballVx * 0.5f
+      } else if (ballX > 1f - radius) {
+        ballX = 1f - radius
+        ballVx = -ballVx * 0.5f
+      }
+      if (ballY < 0.12f + radius) {
+        ballY = 0.12f + radius
+        ballVy = -ballVy * 0.5f
+      } else if (ballY > 1f - radius) {
+        ballY = 1f - radius
+        ballVy = -ballVy * 0.5f
       }
     }
 
@@ -1387,6 +1446,30 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     override fun onDraw(canvas: Canvas) {
       super.onDraw(canvas)
       drawDecorations(canvas, width.toFloat(), height.toFloat(), isForSavedPhoto = false)
+
+      if (showStickers) {
+        drawBall(canvas)
+      }
+    }
+
+    private fun drawBall(canvas: Canvas) {
+      val w = width.toFloat()
+      val h = height.toFloat()
+      val cx = ballX * w
+      val cy = ballY * h
+      val r = w * 0.06f
+
+      // Ball body gradient
+      ballPaint.color = 0xFFFF6F00.toInt() // orange
+      canvas.drawCircle(cx, cy, r, ballPaint)
+      // Inner lighter circle for 3D look
+      ballPaint.color = 0x33FFFFFF.toInt()
+      canvas.drawCircle(cx - r * 0.2f, cy - r * 0.2f, r * 0.7f, ballPaint)
+
+      // Letter "D"
+      ballTextPaint.textSize = r * 1.3f
+      val textY = cy - (ballTextPaint.descent() + ballTextPaint.ascent()) / 2
+      canvas.drawText("D", cx, textY, ballTextPaint)
     }
   }
 }

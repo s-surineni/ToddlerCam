@@ -247,6 +247,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
     savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", true)
     playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 30)
+    useFrontCamera = prefs.getBoolean("use_front_camera", false)
 
     // Clean up temporary cache photos in background
     Executors.newSingleThreadExecutor().execute {
@@ -1085,6 +1086,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val switchSave = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_save_photos)
     switchSave.isChecked = savePhotosToGallery
 
+    val switchFront = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_front_camera)
+    switchFront.isChecked = useFrontCamera
+
     // Time limit picker buttons
     val timeOptions = listOf(
       dialog.findViewById<TextView>(R.id.btn_time_15),
@@ -1140,10 +1144,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
       savePhotosToGallery = isSaveChecked
       playTimeLimitMinutes = selectedTime
+      useFrontCamera = switchFront.isChecked
       
       val prefs = getSharedPreferences("ToddlerCamPrefs", Context.MODE_PRIVATE)
       prefs.edit().putBoolean("save_photos_to_gallery", savePhotosToGallery).apply()
       prefs.edit().putInt("play_time_limit_minutes", playTimeLimitMinutes).apply()
+      prefs.edit().putBoolean("use_front_camera", useFrontCamera).apply()
+
+      // Rebind camera with new setting immediately
+      bindCameraUseCases()
       
       val status = if (savePhotosToGallery) "enabled" else "disabled"
       android.widget.Toast.makeText(this, "Photo saving $status!", android.widget.Toast.LENGTH_SHORT).show()

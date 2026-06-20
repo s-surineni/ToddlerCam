@@ -47,7 +47,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
-import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import android.view.WindowManager
@@ -84,13 +83,9 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 
-import com.google.mlkit.vision.common.InputImage
-import com.google.mlkit.vision.face.FaceDetector
-import com.google.mlkit.vision.face.FaceDetectorOptions
-import androidx.camera.core.ExperimentalGetImage
-import androidx.camera.core.ImageProxy
-
 /**
+
+
  * Main Screen - Camera app with circle gesture to exit
  */
 class MainActivity : AppCompatActivity(), SensorEventListener {
@@ -122,6 +117,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   enum class Season { NONE, SPRING, SUMMER, AUTUMN, WINTER }
   enum class Animal { NONE, CAT, DOG, LION, RABBIT }
 
+  @Volatile
   private var currentMode = Mode.NONE
   private var currentSeason = Season.NONE
   private var currentAnimal = Animal.NONE
@@ -155,19 +151,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   private var imageCapture: ImageCapture? = null
   private var cameraProvider: ProcessCameraProvider? = null
   private var preview: Preview? = null
+  @Volatile
   private var useFrontCamera = false
   private var showStickers = true
   private val mediaActionSound = MediaActionSound()
-  private var faceDetector: FaceDetector? = null
-  private var imageAnalysis: ImageAnalysis? = null
-  @Volatile private var faceCenterX = -1f
-  @Volatile private var faceCenterY = -1f
-  @Volatile private var faceLeft = 0f
-  @Volatile private var faceTop = 0f
-  @Volatile private var faceRight = 0f
-  @Volatile private var faceBottom = 0f
-  private var lastFaceDetectTime = 0L
-  private val FACE_DETECT_INTERVAL_MS = 200L
 
   // Play time limit fields
   private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -225,7 +212,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
     savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", false)
     playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 15)
-    useFrontCamera = prefs.getBoolean("use_front_camera", false)
     showStickers = prefs.getBoolean("show_stickers", true)
 
     // Clean up temporary cache photos in background
@@ -326,21 +312,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         .setTargetAspectRatio(ratio)
         .build()
 
-      // Set up image analysis for face detection
-      val analysis = ImageAnalysis.Builder()
-        .setTargetAspectRatio(ratio)
-        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-        .build()
-      val options = FaceDetectorOptions.Builder()
-        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
-        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
-        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
-        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
-        .build()
-      faceDetector = com.google.mlkit.vision.face.FaceDetection.getClient(options)
-      analysis.setAnalyzer(cameraExecutor, FaceAnalyzer())
-      imageAnalysis = analysis
-
+ 
       bindCameraUseCases()
     }, ContextCompat.getMainExecutor(this))
   }
@@ -351,7 +323,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     try {
       provider.unbindAll()
-      provider.bindToLifecycle(this, selector, preview, imageCapture, imageAnalysis)
+      provider.bindToLifecycle(this, selector, preview, imageCapture)
     } catch (exc: Exception) {
       android.util.Log.e("GiggleCam", "Camera use case binding failed", exc)
       runOnUiThread {
@@ -437,12 +409,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       // Ignore
     }
     cameraExecutor.shutdown()
-    try {
-      faceDetector?.close()
-    } catch (e: Exception) {
-      // Ignore
-    }
-    faceDetector = null
   }
 
   // Disable system gesture navigation and home button
@@ -610,7 +576,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       selectMode(Mode.SEASONS)
     }
     findViewById<View>(R.id.btn_mode_animals).setOnClickListener {
-      selectMode(Mode.ANIMALS)
+      if (!useFrontCamera) {
+        android.widget.Toast.makeText(this, "please selct selfie mode in settings", android.widget.Toast.LENGTH_LONG).show()
+      } else {
+        selectMode(Mode.ANIMALS)
+      }
     }
     btnBackToModes.setOnClickListener {
       goBackToModes()
@@ -906,50 +876,334 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
     }
 
-    // 3. Draw animal ears on detected face (live view only)
-    if (!isForSavedPhoto && currentMode == Mode.ANIMALS && currentAnimal != Animal.NONE && faceCenterX >= 0f) {
-      val earEmoji = when (currentAnimal) {
-        Animal.CAT -> "🐱"
-        Animal.DOG -> "🐶"
-        Animal.LION -> "🦁"
-        Animal.RABBIT -> "🐰"
-        else -> null
-      }
-      if (earEmoji != null) {
-        val stickerPaint = themeOverlayView.stickerPaint
-        stickerPaint.textSize = w * 0.1f
-        val fw = faceRight - faceLeft
-        val fh = faceBottom - faceTop
-
-        // Left ear
-        val lex = (faceLeft + fw * 0.25f).coerceIn(0f, 1f) * w
-        val ley = (faceTop - fh * 0.15f).coerceIn(0f, 1f) * h
-        val leftCenterY = ley - (stickerPaint.descent() + stickerPaint.ascent()) / 2
-        canvas.drawText(earEmoji, lex, leftCenterY, stickerPaint)
-
-        // Right ear
-        val rex = (faceRight - fw * 0.25f).coerceIn(0f, 1f) * w
-        val rey = (faceTop - fh * 0.15f).coerceIn(0f, 1f) * h
-        val rightCenterY = rey - (stickerPaint.descent() + stickerPaint.ascent()) / 2
-        canvas.drawText(earEmoji, rex, rightCenterY, stickerPaint)
-      }
-
-      // Draw animal nose on the nose
-      val noseEmoji = when (currentAnimal) {
-        Animal.CAT -> "🐱"
-        Animal.DOG -> "🐶"
-        else -> null
-      }
-      if (noseEmoji != null) {
-        val stickerPaint = themeOverlayView.stickerPaint
-        stickerPaint.textSize = w * 0.06f
-        val nx = faceCenterX * w
-        val ny = (faceCenterY + (faceBottom - faceTop) * 0.08f).coerceIn(0f, 1f) * h
-        val noseCenterY = ny - (stickerPaint.descent() + stickerPaint.ascent()) / 2
-        canvas.drawText(noseEmoji, nx, noseCenterY, stickerPaint)
-      }
+    // 3. Draw animal features on detected face (both live preview and saved photo)
+    if (currentMode == Mode.ANIMALS && currentAnimal != Animal.NONE) {
+      drawAnimalFeatures(
+        canvas,
+        currentAnimal,
+        0.25f, 0.15f, 0.75f, 0.55f,
+        0.5f, 0.35f,
+        w, h
+      )
     }
 
+  }
+
+  private fun drawAnimalFeatures(
+    canvas: Canvas,
+    animal: Animal,
+    faceLeft: Float,
+    faceTop: Float,
+    faceRight: Float,
+    faceBottom: Float,
+    faceCenterX: Float,
+    faceCenterY: Float,
+    w: Float,
+    h: Float
+  ) {
+    if (animal == Animal.NONE) return
+
+    val fw = (faceRight - faceLeft) * w
+    val fh = (faceBottom - faceTop) * h
+    val fl = faceLeft * w
+    val ft = faceTop * h
+    val fr = faceRight * w
+    val cx = faceCenterX * w
+    val cy = faceCenterY * h
+
+    val paint = Paint().apply {
+      isAntiAlias = true
+    }
+
+    when (animal) {
+      Animal.CAT -> {
+        // --- 1. CAT EARS ---
+        // Left Ear
+        val leftEarPath = Path().apply {
+          moveTo(fl, ft + fh * 0.1f)
+          lineTo(fl + fw * 0.35f, ft + fh * 0.05f)
+          lineTo(fl + fw * 0.08f, ft - fh * 0.25f)
+          close()
+        }
+        paint.color = 0xFFF5B041.toInt() // Orange/Ginger outer ear
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(leftEarPath, paint)
+
+        val leftInnerPath = Path().apply {
+          moveTo(fl + fw * 0.05f, ft + fh * 0.08f)
+          lineTo(fl + fw * 0.30f, ft + fh * 0.06f)
+          lineTo(fl + fw * 0.10f, ft - fh * 0.18f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink inner ear
+        canvas.drawPath(leftInnerPath, paint)
+
+        // Right Ear
+        val rightEarPath = Path().apply {
+          moveTo(fr, ft + fh * 0.1f)
+          lineTo(fr - fw * 0.35f, ft + fh * 0.05f)
+          lineTo(fr - fw * 0.08f, ft - fh * 0.25f)
+          close()
+        }
+        paint.color = 0xFFF5B041.toInt() // Orange/Ginger outer ear
+        canvas.drawPath(rightEarPath, paint)
+
+        val rightInnerPath = Path().apply {
+          moveTo(fr - fw * 0.05f, ft + fh * 0.08f)
+          lineTo(fr - fw * 0.30f, ft + fh * 0.06f)
+          lineTo(fr - fw * 0.10f, ft - fh * 0.18f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink inner ear
+        canvas.drawPath(rightInnerPath, paint)
+
+        // --- 2. CAT NOSE ---
+        val nosePath = Path().apply {
+          moveTo(cx - fw * 0.05f, ft + fh * 0.58f)
+          lineTo(cx + fw * 0.05f, ft + fh * 0.58f)
+          lineTo(cx, ft + fh * 0.63f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink nose
+        canvas.drawPath(nosePath, paint)
+
+        // Nose line and lip curve (mouth)
+        paint.color = 0xFF2C3E50.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = fw * 0.015f
+        paint.strokeCap = Paint.Cap.ROUND
+        
+        // vertical line
+        canvas.drawLine(cx, ft + fh * 0.63f, cx, ft + fh * 0.66f, paint)
+        
+        // mouth curve (w-shape)
+        val mouthPath = Path().apply {
+          moveTo(cx - fw * 0.06f, ft + fh * 0.66f)
+          quadTo(cx - fw * 0.03f, ft + fh * 0.68f, cx, ft + fh * 0.66f)
+          quadTo(cx + fw * 0.03f, ft + fh * 0.68f, cx + fw * 0.06f, ft + fh * 0.66f)
+        }
+        canvas.drawPath(mouthPath, paint)
+
+        // --- 3. CAT WHISKERS ---
+        paint.strokeWidth = fw * 0.012f
+        paint.color = 0xFFE5E7E9.toInt() // Light/white whiskers for contrast on skin
+        
+        // Left Whiskers
+        canvas.drawLine(cx - fw * 0.06f, ft + fh * 0.64f, cx - fw * 0.35f, ft + fh * 0.60f, paint)
+        canvas.drawLine(cx - fw * 0.06f, ft + fh * 0.65f, cx - fw * 0.38f, ft + fh * 0.65f, paint)
+        canvas.drawLine(cx - fw * 0.06f, ft + fh * 0.66f, cx - fw * 0.35f, ft + fh * 0.70f, paint)
+        
+        // Right Whiskers
+        canvas.drawLine(cx + fw * 0.06f, ft + fh * 0.64f, cx + fw * 0.35f, ft + fh * 0.60f, paint)
+        canvas.drawLine(cx + fw * 0.06f, ft + fh * 0.65f, cx + fw * 0.38f, ft + fh * 0.65f, paint)
+        canvas.drawLine(cx + fw * 0.06f, ft + fh * 0.66f, cx + fw * 0.35f, ft + fh * 0.70f, paint)
+      }
+      Animal.DOG -> {
+        // --- 1. DOG EARS ---
+        // Left small rounded ear
+        val leftEarPath = Path().apply {
+          moveTo(fl + fw * 0.04f, ft + fh * 0.02f)
+          cubicTo(fl - fw * 0.10f, ft + fh * 0.04f, fl - fw * 0.12f, ft + fh * 0.16f, fl - fw * 0.05f, ft + fh * 0.22f)
+          cubicTo(fl + fw * 0.02f, ft + fh * 0.24f, fl + fw * 0.06f, ft + fh * 0.12f, fl + fw * 0.04f, ft + fh * 0.02f)
+          close()
+        }
+        paint.color = 0xFF8D6E63.toInt() // Cute brown
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(leftEarPath, paint)
+        val leftInnerPath = Path().apply {
+          moveTo(fl + fw * 0.02f, ft + fh * 0.06f)
+          cubicTo(fl - fw * 0.05f, ft + fh * 0.08f, fl - fw * 0.06f, ft + fh * 0.14f, fl - fw * 0.02f, ft + fh * 0.18f)
+          cubicTo(fl + fw * 0.01f, ft + fh * 0.19f, fl + fw * 0.03f, ft + fh * 0.12f, fl + fw * 0.02f, ft + fh * 0.06f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink inner ear
+        canvas.drawPath(leftInnerPath, paint)
+        // Right small rounded ear
+        val rightEarPath = Path().apply {
+          moveTo(fr - fw * 0.04f, ft + fh * 0.02f)
+          cubicTo(fr + fw * 0.10f, ft + fh * 0.04f, fr + fw * 0.12f, ft + fh * 0.16f, fr + fw * 0.05f, ft + fh * 0.22f)
+          cubicTo(fr - fw * 0.02f, ft + fh * 0.24f, fr - fw * 0.06f, ft + fh * 0.12f, fr - fw * 0.04f, ft + fh * 0.02f)
+          close()
+        }
+        paint.color = 0xFF8D6E63.toInt() // Cute brown
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(rightEarPath, paint)
+        val rightInnerPath = Path().apply {
+          moveTo(fr - fw * 0.02f, ft + fh * 0.06f)
+          cubicTo(fr + fw * 0.05f, ft + fh * 0.08f, fr + fw * 0.06f, ft + fh * 0.14f, fr + fw * 0.02f, ft + fh * 0.18f)
+          cubicTo(fr - fw * 0.01f, ft + fh * 0.19f, fr - fw * 0.03f, ft + fh * 0.12f, fr - fw * 0.02f, ft + fh * 0.06f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink inner ear
+        canvas.drawPath(rightInnerPath, paint)
+
+        // --- 2. DOG NOSE & TONGUE ---
+        // Cute oval nose
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFF2D3E50.toInt() // Dark grey/black nose
+        canvas.drawOval(
+          cx - fw * 0.06f,
+          ft + fh * 0.58f,
+          cx + fw * 0.06f,
+          ft + fh * 0.66f,
+          paint
+        )
+        // Nose highlight (anime-style cute shine)
+        paint.color = Color.WHITE
+        canvas.drawCircle(cx - fw * 0.02f, ft + fh * 0.60f, fw * 0.018f, paint)
+
+        // Tongue sticking out below nose
+        paint.color = 0xFFFF5252.toInt() // Bright Red/Pink tongue
+        paint.style = Paint.Style.FILL
+        val tonguePath = Path().apply {
+          moveTo(cx - fw * 0.04f, ft + fh * 0.66f)
+          lineTo(cx + fw * 0.04f, ft + fh * 0.66f)
+          cubicTo(cx + fw * 0.04f, ft + fh * 0.74f, cx - fw * 0.04f, ft + fh * 0.74f, cx - fw * 0.04f, ft + fh * 0.66f)
+          close()
+        }
+        canvas.drawPath(tonguePath, paint)
+        // Center line on tongue
+        paint.color = 0xFFC62828.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = fw * 0.008f
+        canvas.drawLine(cx, ft + fh * 0.66f, cx, ft + fh * 0.71f, paint)
+      }
+      Animal.LION -> {
+        // --- 1. LION MANE ---
+        paint.style = Paint.Style.FILL
+        paint.color = 0xFFE67E22.toInt() // Lion mane color
+        val manePoints = 12
+        for (i in 0 until manePoints) {
+          val angle = (2 * Math.PI * i) / manePoints
+          val mx = cx + (fw * 0.55f) * kotlin.math.cos(angle).toFloat()
+          val my = cy + (fh * 0.55f) * kotlin.math.sin(angle).toFloat()
+          canvas.drawCircle(mx, my, fw * 0.22f, paint)
+        }
+
+        // Inner mane highlight
+        paint.color = 0xFFF39C12.toInt()
+        for (i in 0 until manePoints) {
+          val angle = (2 * Math.PI * i) / manePoints + (Math.PI / manePoints)
+          val mx = cx + (fw * 0.48f) * kotlin.math.cos(angle).toFloat()
+          val my = cy + (fh * 0.48f) * kotlin.math.sin(angle).toFloat()
+          canvas.drawCircle(mx, my, fw * 0.18f, paint)
+        }
+
+        // --- 2. LION EARS ---
+        // Left Ear
+        paint.color = 0xFFD35400.toInt()
+        canvas.drawCircle(fl + fw * 0.1f, ft - fh * 0.05f, fw * 0.16f, paint)
+        paint.color = 0xFFF5CBA7.toInt()
+        canvas.drawCircle(fl + fw * 0.1f, ft - fh * 0.05f, fw * 0.10f, paint)
+
+        // Right Ear
+        paint.color = 0xFFD35400.toInt()
+        canvas.drawCircle(fr - fw * 0.1f, ft - fh * 0.05f, fw * 0.16f, paint)
+        paint.color = 0xFFF5CBA7.toInt()
+        canvas.drawCircle(fr - fw * 0.1f, ft - fh * 0.05f, fw * 0.10f, paint)
+
+        // --- 3. LION NOSE & WHISKERS ---
+        // Nose/Snout area: white circles
+        paint.color = 0xFFFDFEFE.toInt()
+        canvas.drawCircle(cx - fw * 0.05f, ft + fh * 0.62f, fw * 0.07f, paint)
+        canvas.drawCircle(cx + fw * 0.05f, ft + fh * 0.62f, fw * 0.07f, paint)
+
+        // Nose triangle
+        val nosePath = Path().apply {
+          moveTo(cx - fw * 0.06f, ft + fh * 0.55f)
+          lineTo(cx + fw * 0.06f, ft + fh * 0.55f)
+          lineTo(cx, ft + fh * 0.61f)
+          close()
+        }
+        paint.color = 0xFFD35400.toInt()
+        canvas.drawPath(nosePath, paint)
+
+        // Whiskers
+        paint.color = 0xFF2C3E50.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = fw * 0.01f
+        canvas.drawLine(cx - fw * 0.08f, ft + fh * 0.62f, cx - fw * 0.28f, ft + fh * 0.60f, paint)
+        canvas.drawLine(cx - fw * 0.08f, ft + fh * 0.63f, cx - fw * 0.30f, ft + fh * 0.63f, paint)
+        canvas.drawLine(cx + fw * 0.08f, ft + fh * 0.62f, cx + fw * 0.28f, ft + fh * 0.60f, paint)
+        canvas.drawLine(cx + fw * 0.08f, ft + fh * 0.63f, cx + fw * 0.30f, ft + fh * 0.63f, paint)
+      }
+      Animal.RABBIT -> {
+        // --- 1. RABBIT EARS ---
+        // Left tall ear
+        val leftEarPath = Path().apply {
+          moveTo(fl + fw * 0.10f, ft + fh * 0.15f)
+          cubicTo(fl + fw * 0.02f, ft + fh * 0.07f, fl + fw * 0.06f, ft - fh * 0.12f, fl + fw * 0.16f, ft - fh * 0.12f)
+          cubicTo(fl + fw * 0.26f, ft - fh * 0.12f, fl + fw * 0.30f, ft + fh * 0.07f, fl + fw * 0.22f, ft + fh * 0.15f)
+          close()
+        }
+        paint.color = Color.WHITE
+        paint.style = Paint.Style.FILL
+        canvas.drawPath(leftEarPath, paint)
+
+        val leftInnerPath = Path().apply {
+          moveTo(fl + fw * 0.12f, ft + fh * 0.11f)
+          cubicTo(fl + fw * 0.06f, ft + fh * 0.06f, fl + fw * 0.09f, ft - fh * 0.08f, fl + fw * 0.16f, ft - fh * 0.08f)
+          cubicTo(fl + fw * 0.23f, ft - fh * 0.08f, fl + fw * 0.26f, ft + fh * 0.06f, fl + fw * 0.20f, ft + fh * 0.11f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink inner ear
+        canvas.drawPath(leftInnerPath, paint)
+
+        // Right tall ear
+        val rightEarPath = Path().apply {
+          moveTo(fr - fw * 0.10f, ft + fh * 0.15f)
+          cubicTo(fr - fw * 0.02f, ft + fh * 0.07f, fr - fw * 0.06f, ft - fh * 0.12f, fr - fw * 0.16f, ft - fh * 0.12f)
+          cubicTo(fr - fw * 0.26f, ft - fh * 0.12f, fr - fw * 0.30f, ft + fh * 0.07f, fr - fw * 0.22f, ft + fh * 0.15f)
+          close()
+        }
+        paint.color = Color.WHITE
+        canvas.drawPath(rightEarPath, paint)
+
+        val rightInnerPath = Path().apply {
+          moveTo(fr - fw * 0.12f, ft + fh * 0.11f)
+          cubicTo(fr - fw * 0.06f, ft + fh * 0.06f, fr - fw * 0.09f, ft - fh * 0.08f, fr - fw * 0.16f, ft - fh * 0.08f)
+          cubicTo(fr - fw * 0.23f, ft - fh * 0.08f, fr - fw * 0.26f, ft + fh * 0.06f, fr - fw * 0.20f, ft + fh * 0.11f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink inner ear
+        canvas.drawPath(rightInnerPath, paint)
+
+        // --- 2. RABBIT NOSE ---
+        val nosePath = Path().apply {
+          moveTo(cx - fw * 0.04f, ft + fh * 0.70f)
+          lineTo(cx + fw * 0.04f, ft + fh * 0.70f)
+          lineTo(cx, ft + fh * 0.74f)
+          close()
+        }
+        paint.color = 0xFFF1948A.toInt() // Pink nose
+        canvas.drawPath(nosePath, paint)
+
+        // mouth line and teeth
+        paint.color = 0xFF2C3E50.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = fw * 0.01f
+        canvas.drawLine(cx, ft + fh * 0.74f, cx, ft + fh * 0.77f, paint)
+
+        val mouthPath = Path().apply {
+          moveTo(cx - fw * 0.05f, ft + fh * 0.77f)
+          quadTo(cx - fw * 0.025f, ft + fh * 0.79f, cx, ft + fh * 0.77f)
+          quadTo(cx + fw * 0.025f, ft + fh * 0.79f, cx + fw * 0.05f, ft + fh * 0.77f)
+        }
+        canvas.drawPath(mouthPath, paint)
+
+        // Teeth (Cute rabbit teeth!)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.WHITE
+        canvas.drawRect(cx - fw * 0.025f, ft + fh * 0.77f, cx, ft + fh * 0.80f, paint)
+        canvas.drawRect(cx, ft + fh * 0.77f, cx + fw * 0.025f, ft + fh * 0.80f, paint)
+        paint.color = 0xFF2C3E50.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = fw * 0.005f
+        canvas.drawRect(cx - fw * 0.025f, ft + fh * 0.77f, cx, ft + fh * 0.80f, paint)
+        canvas.drawRect(cx, ft + fh * 0.77f, cx + fw * 0.025f, ft + fh * 0.80f, paint)
+      }
+      Animal.NONE -> {}
+    }
   }
 
   private fun addDecorationsToSavedPhoto(uri: Uri) {
@@ -1325,10 +1579,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
       Mode.ANIMALS -> {
         when (currentAnimal) {
-          Animal.CAT -> listOf("🐱", "🧶", "🐭", "🐟", "⚽", "🧸", "🐾", "🎈", "🚗", "🐰")
-          Animal.DOG -> listOf("🐶", "🦴", "🎾", "⚽", "🏀", "⭐", "🧸", "🚗", "🐾", "🌈")
-          Animal.LION -> listOf("🦁", "🦴", "🌅", "⚽", "🎈", "🧸", "🐾", "🌟", "🌴", "🐆")
-          Animal.RABBIT -> listOf("🐰", "🥕", "🌿", "🌸", "⚽", "🧸", "🌈", "🎈", "🌻", "🦋")
+          Animal.CAT -> listOf("🧶", "🐭", "🐟", "🐾", "⚽", "🧸", "🎈", "🚗", "🌈", "🥛")
+          Animal.DOG -> listOf("🦴", "🎾", "🐾", "⚽", "🏀", "⭐", "🧸", "🚗", "🎈", "🌈")
+          Animal.LION -> listOf("🦴", "🌅", "🐾", "⚽", "🎈", "🧸", "🌟", "🌴", "🥩", "👑")
+          Animal.RABBIT -> listOf("🥕", "🌿", "🌸", "🦋", "⚽", "🧸", "🌈", "🎈", "🌻", "🍓")
           else -> emptyList()
         }
       }
@@ -1343,14 +1597,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val shuffledToys = toyEmojis.shuffled(rand).take(3)
 
     val allEmojis = emojis + shuffledToys
+    val count = allEmojis.size
     allEmojis.forEachIndexed { index, emoji ->
-      val x = 0.15f + (index % 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
-      val y = 0.2f + (index / 3) * 0.3f + (rand.nextFloat() - 0.5f) * 0.1f
+      val fraction = index.toFloat() / count
+      val perimeterPos = fraction * 4f
+      val segment = perimeterPos.toInt()
+      val t = perimeterPos - segment
+      val inset = 0.05f
+      val jitter = (rand.nextFloat() - 0.5f) * 0.03f
+      val (x, y) = when (segment) {
+        0 -> Pair(inset + t * (1f - 2f * inset) + jitter, inset + jitter)
+        1 -> Pair(1f - inset + jitter, inset + t * (1f - 2f * inset) + jitter)
+        2 -> Pair(1f - inset - t * (1f - 2f * inset) + jitter, 1f - inset + jitter)
+        3 -> Pair(inset + jitter, 1f - inset - t * (1f - 2f * inset) + jitter)
+        else -> Pair(0.5f, 0.5f)
+      }
 
       val isLarge = emoji in largeEmojis
       val size = if (isLarge) 0.14f else 0.08f
 
-      currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.18f, 0.9f), size))
+      currentStickers.add(Sticker(emoji, x.coerceIn(0.01f, 0.99f), y.coerceIn(0.01f, 0.99f), size))
     }
   }
 
@@ -1658,70 +1924,4 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
   }
 
-  @OptIn(ExperimentalGetImage::class)
-  inner class FaceAnalyzer : ImageAnalysis.Analyzer {
-    @android.annotation.SuppressLint("UnsafeOptInUsageError")
-    override fun analyze(proxy: ImageProxy) {
-      val now = System.currentTimeMillis()
-      if (currentMode != Mode.ANIMALS || now - lastFaceDetectTime < FACE_DETECT_INTERVAL_MS) {
-        proxy.close()
-        return
-      }
-      lastFaceDetectTime = now
-
-      val mediaImage = proxy.image ?: run { proxy.close(); return }
-      val rotation = proxy.imageInfo.rotationDegrees
-      val imgW: Float = proxy.width.toFloat()
-      val imgH: Float = proxy.height.toFloat()
-      val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
-      val detector = faceDetector ?: run { proxy.close(); return }
-
-      detector.process(inputImage)
-        .addOnSuccessListener { faces ->
-          if (faces.isEmpty()) {
-            faceCenterX = -1f
-          } else {
-            val halfW = imgW * 0.5f
-            val halfH = imgH * 0.5f
-            val best = faces.minBy { face ->
-              val fc = face.boundingBox.centerX().toFloat()
-              val fy = face.boundingBox.centerY().toFloat()
-              java.lang.Math.hypot((fc - halfW).toDouble(), (fy - halfH).toDouble())
-            }
-            val rect = best.boundingBox
-            // Normalized coordinates in sensor orientation
-            val nfx = rect.centerX().toFloat() / imgW
-            val nfy = rect.centerY().toFloat() / imgH
-            val nfl = rect.left.toFloat() / imgW
-            val nft = rect.top.toFloat() / imgH
-            val nfr = rect.right.toFloat() / imgW
-            val nfb = rect.bottom.toFloat() / imgH
-
-            // Rotate to display orientation
-            val rot: (Float, Float, Int) -> Pair<Float, Float> = { x, y, r ->
-              when (r) {
-                90 -> Pair(y, 1f - x)
-                270 -> Pair(1f - y, x)
-                180 -> Pair(1f - x, 1f - y)
-                else -> Pair(x, y)
-              }
-            }
-            val (cx, cy) = rot(nfx, nfy, rotation)
-            val (l, t) = rot(nfl, nft, rotation)
-            val (r, b) = rot(nfr, nfb, rotation)
-
-            // Mirror X for front camera
-            val mir: (Float) -> Float = if (useFrontCamera) { v -> 1f - v } else { v -> v }
-
-            faceCenterX = mir(cx)
-            faceCenterY = cy
-            faceLeft = mir(l).coerceIn(0f, 1f)
-            faceTop = t.coerceIn(0f, 1f)
-            faceRight = mir(r).coerceIn(0f, 1f)
-            faceBottom = b.coerceIn(0f, 1f)
-          }
-        }
-        .addOnCompleteListener { proxy.close() }
-    }
-  }
 }

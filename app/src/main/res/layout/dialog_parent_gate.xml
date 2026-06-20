@@ -41,7 +41,8 @@
         android:textColor="#333333"
         android:background="@drawable/card_sub_option"
         android:layout_marginBottom="24dp"
-        android:importantForAutofill="no" />
+        android:importantForAutofill="no"
+        android:maxLength="3" />
 
     <!-- Action Buttons -->
     <LinearLayout
@@ -60,7 +61,7 @@
             android:textColor="#666666"
             android:textSize="16sp"
             android:layout_marginEnd="8dp"
-            android:clickable="true"
+            android:filterTouchesWhenObscured="true" android:clickable="true"
             android:focusable="true"/>
 
         <TextView
@@ -76,7 +77,7 @@
             android:textSize="16sp"
             android:textStyle="bold"
             android:layout_marginStart="8dp"
-            android:clickable="true"
+            android:filterTouchesWhenObscured="true" android:clickable="true"
             android:focusable="true"/>
 
     </LinearLayout>

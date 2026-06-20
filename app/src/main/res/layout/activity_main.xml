@@ -19,59 +19,6 @@
         android:clickable="false"
         android:focusable="false" />
 
-    <!-- Top Banner displaying active mode -->
-    <TextView
-        android:id="@+id/tv_camera_banner"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="24dp"
-        android:background="@drawable/camera_banner_background"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingTop="10dp"
-        android:paddingBottom="10dp"
-        android:textColor="#FFFFFF"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:visibility="gone"
-        tools:text="🌸 SPRING 🌸" />
-
-    <!-- Change Mode Gear Button -->
-    <TextView
-        android:id="@+id/btn_change_mode"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="24dp"
-        android:layout_marginEnd="20dp"
-        android:background="@drawable/camera_banner_background"
-        android:paddingStart="14dp"
-        android:paddingEnd="14dp"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:text="⚙️ Mode"
-        android:textColor="#FFFFFF"
-        android:textSize="14sp"
-        android:textStyle="bold"
-        android:visibility="gone" />
-
-    <!-- Switch Camera Button (bottom-left, above circle detection) -->
-    <TextView
-        android:id="@+id/btn_switch_camera"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
-        android:layout_gravity="bottom|start"
-        android:layout_marginStart="20dp"
-        android:layout_marginBottom="32dp"
-        android:background="@drawable/camera_banner_background"
-        android:gravity="center"
-        android:text="🔄"
-        android:textSize="24sp"
-        android:visibility="gone"
-        android:clickable="true"
-        android:focusable="true" />
-
     <!-- Circle Detection Overlay -->
     <com.toddlerapps.simplecam.CircleDetectionView
         android:id="@+id/circle_detection_view"
@@ -148,7 +95,7 @@
         android:background="@drawable/selection_background"
         android:padding="24dp"
         android:gravity="center"
-        android:clickable="true"
+        android:filterTouchesWhenObscured="true" android:clickable="true"
         android:focusable="true">
 
         <!-- Title of the App -->
@@ -194,7 +141,7 @@
                 android:orientation="vertical"
                 android:gravity="center"
                 android:layout_marginBottom="24dp"
-                android:clickable="true"
+                android:filterTouchesWhenObscured="true" android:clickable="true"
                 android:focusable="true">
 
                 <TextView
@@ -207,15 +154,6 @@
                     android:clickable="false"
                     android:focusable="false" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Spring, Summer, Autumn, Winter"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:layout_marginTop="8dp"
-                    android:clickable="false"
-                    android:focusable="false" />
             </LinearLayout>
 
             <LinearLayout
@@ -225,28 +163,19 @@
                 android:background="@drawable/card_gradient_animals"
                 android:orientation="vertical"
                 android:gravity="center"
-                android:clickable="true"
+                android:filterTouchesWhenObscured="true" android:clickable="true"
                 android:focusable="true">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="🐶 Animals 🦆"
+                    android:text="🐶 Animals 🐰"
                     android:textColor="#FFFFFF"
                     android:textSize="28sp"
                     android:textStyle="bold"
                     android:clickable="false"
                     android:focusable="false" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Cat, Dog, Bird, Cow, Duck"
-                    android:textColor="#FFFFFF"
-                    android:textSize="14sp"
-                    android:layout_marginTop="8dp"
-                    android:clickable="false"
-                    android:focusable="false" />
             </LinearLayout>
 
             <!-- Instructions and Settings Buttons -->
@@ -271,7 +200,7 @@
                     android:paddingTop="10dp"
                     android:paddingBottom="10dp"
                     android:layout_marginEnd="12dp"
-                    android:clickable="true"
+                    android:filterTouchesWhenObscured="true" android:clickable="true"
                     android:focusable="true" />
 
                 <TextView
@@ -288,7 +217,7 @@
                     android:paddingTop="10dp"
                     android:paddingBottom="10dp"
                     android:layout_marginStart="12dp"
-                    android:clickable="true"
+                    android:filterTouchesWhenObscured="true" android:clickable="true"
                     android:focusable="true" />
             </LinearLayout>
 
@@ -304,7 +233,7 @@
                 android:textSize="18sp"
                 android:textStyle="bold"
                 android:padding="12dp"
-                android:clickable="true"
+                android:filterTouchesWhenObscured="true" android:clickable="true"
                 android:focusable="true"/>
         </LinearLayout>
 
@@ -353,7 +282,7 @@
                         android:textSize="20sp"
                         android:textStyle="bold"
                         android:layout_marginEnd="8dp"
-                        android:clickable="true"
+                        android:filterTouchesWhenObscured="true" android:clickable="true"
                         android:focusable="true"/>
 
                     <TextView
@@ -367,7 +296,7 @@
                         android:textSize="20sp"
                         android:textStyle="bold"
                         android:layout_marginStart="8dp"
-                        android:clickable="true"
+                        android:filterTouchesWhenObscured="true" android:clickable="true"
                         android:focusable="true"/>
                 </LinearLayout>
 
@@ -389,7 +318,7 @@
                         android:textSize="20sp"
                         android:textStyle="bold"
                         android:layout_marginEnd="8dp"
-                        android:clickable="true"
+                        android:filterTouchesWhenObscured="true" android:clickable="true"
                         android:focusable="true"/>
 
                     <TextView
@@ -403,7 +332,7 @@
                         android:textSize="20sp"
                         android:textStyle="bold"
                         android:layout_marginStart="8dp"
-                        android:clickable="true"
+                        android:filterTouchesWhenObscured="true" android:clickable="true"
                         android:focusable="true"/>
                 </LinearLayout>
 
@@ -424,7 +353,7 @@
                         android:textColor="#333333"
                         android:textSize="20sp"
                         android:textStyle="bold"
-                        android:clickable="true"
+                        android:filterTouchesWhenObscured="true" android:clickable="true"
                         android:focusable="true"/>
                 </LinearLayout>
             </LinearLayout>
@@ -446,7 +375,7 @@
                     android:textStyle="bold"
                     android:padding="12dp"
                     android:layout_marginEnd="16dp"
-                    android:clickable="true"
+                    android:filterTouchesWhenObscured="true" android:clickable="true"
                     android:focusable="true"/>
 
                 <TextView
@@ -459,7 +388,7 @@
                     android:textStyle="bold"
                     android:padding="12dp"
                     android:layout_marginStart="16dp"
-                    android:clickable="true"
+                    android:filterTouchesWhenObscured="true" android:clickable="true"
                     android:focusable="true"/>
             </LinearLayout>
         </LinearLayout>

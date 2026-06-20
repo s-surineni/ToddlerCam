@@ -47,6 +47,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import android.view.WindowManager
@@ -63,6 +64,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import android.content.Context
@@ -72,18 +74,21 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
-import android.graphics.RectF
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.BitmapDrawable
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import android.media.ExifInterface
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.face.FaceDetector
+import com.google.mlkit.vision.face.FaceDetectorOptions
+import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ImageProxy
 
 /**
  * Main Screen - Camera app with circle gesture to exit
@@ -96,6 +101,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   // Orientation angles from game rotation vector (radians)
   private var tiltRoll = 0f // positive = right side down → ball rolls right
   private var tiltPitch = 0f // positive = top tilting away/forward → ball rolls down
+
+  // Reusable arrays for sensor math (avoid per-event allocation)
+  private val rotationMatrix = FloatArray(9)
+  private val orientation = FloatArray(3)
 
   // Sticker data model (static position, no physics)
   class Sticker(
@@ -111,15 +120,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
   enum class Mode { NONE, SEASONS, ANIMALS }
   enum class Season { NONE, SPRING, SUMMER, AUTUMN, WINTER }
-  enum class Animal { NONE, CAT, DOG, BIRD, COW, DUCK }
+  enum class Animal { NONE, CAT, DOG, LION, RABBIT }
 
   private var currentMode = Mode.NONE
   private var currentSeason = Season.NONE
   private var currentAnimal = Animal.NONE
 
   private lateinit var themeOverlayView: ThemeOverlayView
-  private lateinit var tvCameraBanner: TextView
-  private lateinit var btnChangeMode: TextView
   private lateinit var layoutSelectionScreen: View
   private lateinit var containerModeSelection: View
   private lateinit var containerSubSelection: View
@@ -136,12 +143,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   private lateinit var btnExitAppSub: View
   private lateinit var btnInstructions: View
   private lateinit var btnSettings: View
-  private var savePhotosToGallery = true
+  private var savePhotosToGallery = false
+  private var isTakingPhoto = false
 
   private lateinit var previewView: PreviewView
   private lateinit var circleDetectionView: CircleDetectionView
   private lateinit var photoPreviewView: ImageView
-  private lateinit var btnSwitchCamera: View
   private lateinit var cameraExecutor: ExecutorService
   private val cameraPermissionRequestCode = 100
   private val storagePermissionRequestCode = 101
@@ -151,10 +158,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   private var useFrontCamera = false
   private var showStickers = true
   private val mediaActionSound = MediaActionSound()
+  private var faceDetector: FaceDetector? = null
+  private var imageAnalysis: ImageAnalysis? = null
+  @Volatile private var faceCenterX = -1f
+  @Volatile private var faceCenterY = -1f
+  @Volatile private var faceLeft = 0f
+  @Volatile private var faceTop = 0f
+  @Volatile private var faceRight = 0f
+  @Volatile private var faceBottom = 0f
+  private var lastFaceDetectTime = 0L
+  private val FACE_DETECT_INTERVAL_MS = 200L
 
   // Play time limit fields
   private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-  private var playTimeLimitMinutes = 30
+  private var playTimeLimitMinutes = 15
   private var playTimeLimitRunnable: Runnable? = null
   private var isTimeUp = false
   private lateinit var layoutTimeUp: View
@@ -168,6 +185,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   override fun onCreate(savedInstanceState: Bundle?) {
     // Switch to AppTheme for displaying the activity
     setTheme(R.style.AppTheme)
+    installSplashScreen()
 
     super.onCreate(savedInstanceState)
     setContentView(R.layout.activity_main)
@@ -178,7 +196,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     previewView = findViewById(R.id.preview_view)
     circleDetectionView = findViewById(R.id.circle_detection_view)
     photoPreviewView = findViewById(R.id.photo_preview_view)
-    btnSwitchCamera = findViewById(R.id.btn_switch_camera)
     layoutTimeUp = findViewById(R.id.layout_time_up)
     cameraExecutor = Executors.newSingleThreadExecutor()
 
@@ -187,8 +204,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     gameRotation = sensorManager.getDefaultSensor(Sensor.TYPE_GAME_ROTATION_VECTOR)
 
     // Bind selection views
-    tvCameraBanner = findViewById(R.id.tv_camera_banner)
-    btnChangeMode = findViewById(R.id.btn_change_mode)
     layoutSelectionScreen = findViewById(R.id.layout_selection_screen)
     containerModeSelection = findViewById(R.id.container_mode_selection)
     containerSubSelection = findViewById(R.id.container_sub_selection)
@@ -208,20 +223,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     // Load saved preferences
     val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
-    savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", true)
-    playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 30)
+    savePhotosToGallery = prefs.getBoolean("save_photos_to_gallery", false)
+    playTimeLimitMinutes = prefs.getInt("play_time_limit_minutes", 15)
     useFrontCamera = prefs.getBoolean("use_front_camera", false)
     showStickers = prefs.getBoolean("show_stickers", true)
 
     // Clean up temporary cache photos in background
-    Executors.newSingleThreadExecutor().execute {
+    cameraExecutor.execute {
       try {
         cacheDir.listFiles()?.forEach { file ->
           if (file.name.startsWith("GiggleCam_")) {
             file.delete()
           }
         }
-      } catch (e: Exception) {
+      } catch (_: Exception) {
         // Ignore
       }
     }
@@ -233,18 +248,13 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     // Set up menu clicks
     setupMenuClicks()
 
-    // Switch between front and back camera
-    btnSwitchCamera.setOnClickListener {
-      useFrontCamera = !useFrontCamera
-      bindCameraUseCases()
-    }
-
     // Show selection screen by default
     generateMosaicBackground()
     showSelectionScreen()
 
-    // Keep screen on
+    // Keep screen on and prevent screenshots
     window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 
     // Register back pressed callback to prevent back button from closing the app
     onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -253,7 +263,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
     })
 
-    // Set up circle detection callback to return to selection screen
+    // Set up circle detection callback to return to selection screen (requires parent gate when time is up)
     circleDetectionView.setCircleDetectionCallback {
       runOnUiThread {
         showSelectionScreen()
@@ -316,6 +326,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         .setTargetAspectRatio(ratio)
         .build()
 
+      // Set up image analysis for face detection
+      val analysis = ImageAnalysis.Builder()
+        .setTargetAspectRatio(ratio)
+        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+        .build()
+      val options = FaceDetectorOptions.Builder()
+        .setPerformanceMode(FaceDetectorOptions.PERFORMANCE_MODE_FAST)
+        .setContourMode(FaceDetectorOptions.CONTOUR_MODE_NONE)
+        .setLandmarkMode(FaceDetectorOptions.LANDMARK_MODE_NONE)
+        .setClassificationMode(FaceDetectorOptions.CLASSIFICATION_MODE_NONE)
+        .build()
+      faceDetector = com.google.mlkit.vision.face.FaceDetection.getClient(options)
+      analysis.setAnalyzer(cameraExecutor, FaceAnalyzer())
+      imageAnalysis = analysis
+
       bindCameraUseCases()
     }, ContextCompat.getMainExecutor(this))
   }
@@ -326,7 +351,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     try {
       provider.unbindAll()
-      provider.bindToLifecycle(this, selector, preview, imageCapture)
+      provider.bindToLifecycle(this, selector, preview, imageCapture, imageAnalysis)
     } catch (exc: Exception) {
       android.util.Log.e("GiggleCam", "Camera use case binding failed", exc)
       runOnUiThread {
@@ -398,6 +423,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     } catch (e: Exception) {
       // Ignore
     }
+    // Cancel any pending time limit timer
+    playTimeLimitRunnable?.let { mainHandler.removeCallbacks(it) }
+    playTimeLimitRunnable = null
     try {
       stopLockTask()
     } catch (e: Exception) {
@@ -409,12 +437,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       // Ignore
     }
     cameraExecutor.shutdown()
-  }
-
-  // Disable back button to prevent kids from exiting
-  override fun onBackPressed() {
-    // Do nothing - back button is disabled
-    // Only circle gesture will exit the app
+    try {
+      faceDetector?.close()
+    } catch (e: Exception) {
+      // Ignore
+    }
+    faceDetector = null
   }
 
   // Disable system gesture navigation and home button
@@ -459,10 +487,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   }
 
   private fun takePhoto() {
+    if (isTakingPhoto) return
     val imageCapture = this.imageCapture ?: return
 
-    // Play click sound immediately for instant feedback
-    playClickSound()
+    isTakingPhoto = true
 
     // Create time-stamped name with extension
     val name = "GiggleCam_" + SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US)
@@ -483,6 +511,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         .build()
     } else {
       val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
+      if (dir == null) {
+        android.util.Log.e("GiggleCam", "External storage not available, cannot save photo")
+        return
+      }
       val file = java.io.File(dir, name)
       ImageCapture.OutputFileOptions.Builder(file).build()
     }
@@ -493,21 +525,26 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       ContextCompat.getMainExecutor(this),
       object : ImageCapture.OnImageSavedCallback {
         override fun onError(exc: ImageCaptureException) {
+          isTakingPhoto = false
           android.util.Log.e("GiggleCam", "Photo capture failed: ${exc.message}", exc)
           android.widget.Toast.makeText(this@MainActivity, "Failed to save: ${exc.message}", android.widget.Toast.LENGTH_LONG).show()
         }
 
         override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+          // Play shutter sound now that capture is confirmed
+          playClickSound()
           val savedUri = output.savedUri
-          android.util.Log.d("GiggleCam", "Photo capture succeeded: $savedUri")
+          // Photo capture succeeded (URI kept private - not logged)
           
-          val uriToLoad = savedUri ?: Uri.fromFile(
-            if (!savePhotosToGallery) {
-              java.io.File(cacheDir, name)
-            } else {
-              java.io.File(getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES), name)
-            }
-          )
+          val uriToLoad: Uri?
+          if (savedUri != null) {
+            uriToLoad = savedUri
+          } else if (!savePhotosToGallery) {
+            uriToLoad = Uri.fromFile(java.io.File(cacheDir, name))
+          } else {
+            val extDir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
+            uriToLoad = if (extDir != null) Uri.fromFile(java.io.File(extDir, name)) else null
+          }
 
           uriToLoad?.let { uri ->
             // Add decorations before showing preview and notifying gallery
@@ -522,7 +559,18 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
 
             runOnUiThread {
-              photoPreviewView.setImageURI(uri)
+              // Use setImageBitmap for file:// URIs to avoid FileUriExposedException on API 26+
+              try {
+                if (uri.scheme == "file") {
+                  photoPreviewView.setImageBitmap(
+                    BitmapFactory.decodeFile(uri.path)
+                  )
+                } else {
+                  photoPreviewView.setImageURI(uri)
+                }
+              } catch (e: Exception) {
+                android.util.Log.e("GiggleCam", "Failed to load preview image", e)
+              }
               photoPreviewView.visibility = View.VISIBLE
               circleDetectionView.isEnabled = false
 
@@ -541,14 +589,17 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
           // If API < Q and saving to gallery, notify the media scanner so the photo appears in gallery
           if (savePhotosToGallery && Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
             val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
-            val file = java.io.File(dir, name)
-            android.media.MediaScannerConnection.scanFile(
-              this@MainActivity,
-              arrayOf(file.absolutePath),
-              null,
-              null
-            )
+            if (dir != null) {
+              val file = java.io.File(dir, name)
+              android.media.MediaScannerConnection.scanFile(
+                this@MainActivity,
+                arrayOf(file.absolutePath),
+                null,
+                null
+              )
+            }
           }
+          isTakingPhoto = false
         }
       }
     )
@@ -563,9 +614,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     }
     btnBackToModes.setOnClickListener {
       goBackToModes()
-    }
-    btnChangeMode.setOnClickListener {
-      showSelectionScreen()
     }
 
     val exitClickListener = View.OnClickListener {
@@ -613,10 +661,9 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       tvSubSelectionTitle.text = "Choose an Animal:"
       btnOption1.text = "🐱 Cat"
       btnOption2.text = "🐶 Dog"
-      btnOption3.text = "🐦 Bird"
-      btnOption4.text = "🐮 Cow"
-      btnOption5.text = "🦆 Duck"
-      layoutOptionRow3.visibility = View.VISIBLE
+      btnOption3.text = "🦁 Lion"
+      btnOption4.text = "🐰 Rabbit"
+      layoutOptionRow3.visibility = View.GONE
     }
   }
 
@@ -642,9 +689,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       currentAnimal = when (index) {
         1 -> Animal.CAT
         2 -> Animal.DOG
-        3 -> Animal.BIRD
-        4 -> Animal.COW
-        5 -> Animal.DUCK
+        3 -> Animal.LION
+        4 -> Animal.RABBIT
         else -> Animal.NONE
       }
     }
@@ -653,11 +699,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
   }
 
   private fun startPlaying() {
+    if (isTimeUp) return
     layoutSelectionScreen.visibility = View.GONE
-    tvCameraBanner.text = getBannerText()
-    tvCameraBanner.visibility = View.VISIBLE
-    btnChangeMode.visibility = View.VISIBLE
-    btnSwitchCamera.visibility = View.VISIBLE
     
     // Enable circle exit drawing
     circleDetectionView.isEnabled = true
@@ -735,10 +778,6 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     layoutSelectionScreen.visibility = View.VISIBLE
     containerSubSelection.visibility = View.GONE
     containerModeSelection.visibility = View.VISIBLE
-    tvCameraBanner.visibility = View.GONE
-    btnChangeMode.visibility = View.GONE
-    btnSwitchCamera.visibility = View.GONE
-
     // Disable exit drawing when selection menu is visible
     circleDetectionView.isEnabled = false
 
@@ -746,195 +785,108 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     themeOverlayView.invalidate()
   }
 
-  private fun getBannerText(): String {
-    return when (currentMode) {
-      Mode.SEASONS -> {
-        when (currentSeason) {
-          Season.SPRING -> "🌸 SPRING 🌸"
-          Season.SUMMER -> "☀️ SUMMER ☀️"
-          Season.AUTUMN -> "🍂 AUTUMN 🍂"
-          Season.WINTER -> "❄️ WINTER ❄️"
-          else -> ""
-        }
-      }
-      Mode.ANIMALS -> {
-        when (currentAnimal) {
-          Animal.CAT -> "🐱 CAT 🐱"
-          Animal.DOG -> "🐶 DOG 🐶"
-          Animal.BIRD -> "🐦 BIRD 🐦"
-          Animal.COW -> "🐮 COW 🐮"
-          Animal.DUCK -> "🦆 DUCK 🦆"
-          else -> ""
-        }
-      }
-      else -> ""
-    }
-  }
-
   private fun drawDecorations(canvas: Canvas, w: Float, h: Float, isForSavedPhoto: Boolean) {
-    val paint = Paint().apply {
-      isAntiAlias = true
-      textAlign = Paint.Align.CENTER
-    }
+    val paint = themeOverlayView.decorPaint
 
     // 1. Draw full screen filters and detailed weather effects based on season
     if (currentMode == Mode.SEASONS) {
       when (currentSeason) {
         Season.SPRING -> {
-          // Soft pink spring tint
-          val springFilter = Paint().apply {
-            color = 0x12FFC0CB.toInt() // Pink tint
-            style = Paint.Style.FILL
+          // Soft pink spring tint (live view only, not on saved photos)
+          if (!isForSavedPhoto) {
+            canvas.drawRect(0f, 0f, w, h, themeOverlayView.springTintPaint)
           }
-          canvas.drawRect(0f, 0f, w, h, springFilter)
 
-          // Falling flower petals in unicorn colors
-          val petalPaint = Paint().apply {
-            style = Paint.Style.FILL
-            isAntiAlias = true
-          }
-          val unicornPetals = intArrayOf(
-            0xCCFFB5D5.toInt(), 0xCCD5B5FF.toInt(), 0xCCB5D5FF.toInt(),
-            0xCCB5FFD5.toInt(), 0xCCFFF5B5.toInt(), 0xCCB5E0FF.toInt(), 0xCCFFC5E0.toInt()
-          )
+          // Falling flower rain
+          val flowerPaint = themeOverlayView.rainPaint
+          flowerPaint.color = Color.WHITE
+          flowerPaint.textAlign = Paint.Align.CENTER
+          val flowers = listOf("🌸", "🌷", "🌺", "🌼")
           if (isForSavedPhoto) {
-            val numPetals = 10
-            for (i in 0 until numPetals) {
+            val numFlowers = 10
+            for (i in 0 until numFlowers) {
               val rand = java.util.Random((i * 9999).toLong())
               val px = rand.nextFloat() * w
               val py = rand.nextFloat() * h
-              val rx = w * 0.015f + rand.nextFloat() * (w * 0.02f)
-              val ry = rx * (0.3f + rand.nextFloat() * 0.5f)
-              petalPaint.color = unicornPetals[rand.nextInt(unicornPetals.size)]
-              canvas.save()
-              canvas.translate(px, py)
-              canvas.rotate(rand.nextFloat() * 360f)
-              val rect = RectF(-rx, -ry, rx, ry)
-              canvas.drawOval(rect, petalPaint)
-              canvas.restore()
+              val size = w * 0.06f
+              flowerPaint.textSize = size
+              canvas.drawText(flowers[rand.nextInt(flowers.size)], px, py, flowerPaint)
             }
           } else {
-            val cycleMs = 600L
-            val baseTime = System.currentTimeMillis()
             for (i in themeOverlayView.petalX.indices) {
-              val px = themeOverlayView.petalX[i]
-              val py = themeOverlayView.petalY[i]
-              val rx = themeOverlayView.petalSize[i]
-              val ry = rx * (0.3f + (i % 3) * 0.15f)
-              val elapsed = (baseTime + i * 200L) % (cycleMs * unicornPetals.size)
-              val ci = (elapsed / cycleMs).toInt()
-              val color1 = unicornPetals.getOrElse(ci) { unicornPetals[0] }
-              val color2 = unicornPetals.getOrElse((ci + 1) % unicornPetals.size) { unicornPetals[0] }
-              val t = (elapsed % cycleMs) / cycleMs.toFloat()
-              petalPaint.color = themeOverlayView.blendColor(color1, color2, t)
-              canvas.save()
-              canvas.translate(px, py)
-              canvas.rotate(themeOverlayView.petalRot[i])
-              val rect = RectF(-rx, -ry, rx, ry)
-              canvas.drawOval(rect, petalPaint)
-              canvas.restore()
+              val size = w * 0.06f
+              flowerPaint.textSize = size
+              canvas.drawText(flowers[i % flowers.size], themeOverlayView.petalX[i], themeOverlayView.petalY[i], flowerPaint)
             }
           }
         }
         Season.SUMMER -> {
-          // Warm sunny golden/yellow tint
-          val sunnyFilter = Paint().apply {
-            color = 0x18FFD700.toInt() // Subtle transparent gold
-            style = Paint.Style.FILL
+          // Warm sunny golden/yellow tint (live view only, not on saved photos)
+          if (!isForSavedPhoto) {
+            canvas.drawRect(0f, 0f, w, h, themeOverlayView.summerTintPaint)
           }
-          canvas.drawRect(0f, 0f, w, h, sunnyFilter)
 
           // Draw a soft glowing sun in the top right corner
-          val sunPaint = Paint().apply {
-            color = 0x33FF9800.toInt() // Glowing orange
-            style = Paint.Style.FILL
-            isAntiAlias = true
-          }
+          val sunPaint = themeOverlayView.sunPaint
           canvas.drawCircle(w * 0.9f, h * 0.1f, w * 0.25f, sunPaint)
           sunPaint.color = 0x44FFEB3B.toInt() // Glowing yellow core
           canvas.drawCircle(w * 0.9f, h * 0.1f, w * 0.15f, sunPaint)
+          sunPaint.color = 0x33FF9800.toInt() // Restore original
         }
         Season.AUTUMN -> {
-          // Cool rainy blue/gray tint
-          val rainyFilter = Paint().apply {
-            color = 0x180000FF.toInt() // Cool blue tint
-            style = Paint.Style.FILL
+          // Cool rainy blue/gray tint (live view only, not on saved photos)
+          if (!isForSavedPhoto) {
+            canvas.drawRect(0f, 0f, w, h, themeOverlayView.autumnTintPaint)
           }
-          canvas.drawRect(0f, 0f, w, h, rainyFilter)
 
-          // Falling raindrops (teardrop shapes)
-          val rainPaint = Paint().apply {
-            color = 0x88FFFFFF.toInt()
-            style = Paint.Style.FILL
-            isAntiAlias = true
-          }
+          // Falling raindrops as light blue drop emoji
+          val rainPaint = themeOverlayView.rainPaint
+          rainPaint.color = 0xCC87CEEB.toInt() // Light blue (sky blue)
+          rainPaint.textAlign = Paint.Align.CENTER
           if (isForSavedPhoto) {
             val numRaindrops = 12
             for (i in 0 until numRaindrops) {
               val rand = java.util.Random((i * 1234).toLong())
               val rx = rand.nextFloat() * w
               val ry = rand.nextFloat() * h
-              val size = w * 0.015f + rand.nextFloat() * (w * 0.015f)
-              canvas.save()
-              canvas.translate(rx, ry)
-              canvas.scale(size, size)
-              canvas.drawPath(themeOverlayView.raindropPath, rainPaint)
-              canvas.restore()
+              val size = w * 0.06f
+              rainPaint.textSize = size
+              canvas.drawText("💧", rx, ry, rainPaint)
             }
           } else {
             for (i in themeOverlayView.rainX.indices) {
-              canvas.save()
-              canvas.translate(themeOverlayView.rainX[i], themeOverlayView.rainY[i])
-              val size = w * 0.018f
-              canvas.scale(size, size)
-              canvas.drawPath(themeOverlayView.raindropPath, rainPaint)
-              canvas.restore()
+              val size = w * 0.06f
+              rainPaint.textSize = size
+              canvas.drawText("💧", themeOverlayView.rainX[i], themeOverlayView.rainY[i], rainPaint)
             }
           }
         }
         Season.WINTER -> {
-          // Cold snowy white tint
-          val winterFilter = Paint().apply {
-            color = 0x12FFFFFF.toInt() // Subtle white/snowy tint
-            style = Paint.Style.FILL
+          // Cold snowy white tint (live view only, not on saved photos)
+          if (!isForSavedPhoto) {
+            canvas.drawRect(0f, 0f, w, h, themeOverlayView.winterTintPaint)
           }
-          canvas.drawRect(0f, 0f, w, h, winterFilter)
 
-          // Gentle falling snowflakes (drawn as 6-branch crystal shapes)
-          val snowPaint = Paint().apply {
-            color = 0xAAFFFFFF.toInt() // Soft white
-            style = Paint.Style.STROKE
-            strokeWidth = w * 0.004f
-            strokeCap = Paint.Cap.ROUND
-            isAntiAlias = true
-          }
+          // Falling snowflake emoji
+          val snowPaint = themeOverlayView.snowPaint
+          snowPaint.color = 0xCCFFFFFF.toInt()
+          snowPaint.style = Paint.Style.FILL
+          snowPaint.textAlign = Paint.Align.CENTER
           if (isForSavedPhoto) {
             val numSnowflakes = 10
             for (i in 0 until numSnowflakes) {
               val rand = java.util.Random((i * 5678).toLong())
               val sx = rand.nextFloat() * w
               val sy = rand.nextFloat() * h
-              val size = w * 0.008f + rand.nextFloat() * (w * 0.01f)
-              canvas.save()
-              canvas.translate(sx, sy)
-              canvas.rotate(rand.nextFloat() * 360f)
-              for (j in 0 until 3) {
-                canvas.drawLine(0f, -size, 0f, size, snowPaint)
-                canvas.rotate(60f)
-              }
-              canvas.restore()
+              val size = w * 0.06f
+              snowPaint.textSize = size
+              canvas.drawText("❄️", sx, sy, snowPaint)
             }
           } else {
             for (i in themeOverlayView.snowX.indices) {
-              canvas.save()
-              canvas.translate(themeOverlayView.snowX[i], themeOverlayView.snowY[i])
-              canvas.rotate(themeOverlayView.snowRot[i])
-              val size = themeOverlayView.snowSize[i]
-              for (j in 0 until 3) {
-                canvas.drawLine(0f, -size, 0f, size, snowPaint)
-                canvas.rotate(60f)
-              }
-              canvas.restore()
+              val size = w * 0.06f
+              snowPaint.textSize = size
+              canvas.drawText("❄️", themeOverlayView.snowX[i], themeOverlayView.snowY[i], snowPaint)
             }
           }
         }
@@ -944,10 +896,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     // 2. Draw static themed stickers
     if (currentStickers.isNotEmpty()) {
-      val stickerPaint = Paint().apply {
-        isAntiAlias = true
-        textAlign = Paint.Align.CENTER
-      }
+      val stickerPaint = themeOverlayView.stickerPaint
       currentStickers.forEach { sticker ->
         val px = sticker.x * w
         val py = sticker.y * h
@@ -957,93 +906,89 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       }
     }
 
-    // 3. Draw static animal decorations (large corner mascot + accent)
-    if (currentMode == Mode.ANIMALS) {
-      val (animalEmoji, accentEmoji) = when (currentAnimal) {
-        Animal.CAT -> Pair("🐱", "🐾")
-        Animal.DOG -> Pair("🐶", "🐾")
-        Animal.BIRD -> Pair("🐦", "🌿")
-        Animal.COW -> Pair("🐮", "🌾")
-        Animal.DUCK -> Pair("🦆", "🌊")
-        else -> Pair("", "")
+    // 3. Draw animal ears on detected face (live view only)
+    if (!isForSavedPhoto && currentMode == Mode.ANIMALS && currentAnimal != Animal.NONE && faceCenterX >= 0f) {
+      val earEmoji = when (currentAnimal) {
+        Animal.CAT -> "🐱"
+        Animal.DOG -> "🐶"
+        Animal.LION -> "🦁"
+        Animal.RABBIT -> "🐰"
+        else -> null
+      }
+      if (earEmoji != null) {
+        val stickerPaint = themeOverlayView.stickerPaint
+        stickerPaint.textSize = w * 0.1f
+        val fw = faceRight - faceLeft
+        val fh = faceBottom - faceTop
+
+        // Left ear
+        val lex = (faceLeft + fw * 0.25f).coerceIn(0f, 1f) * w
+        val ley = (faceTop - fh * 0.15f).coerceIn(0f, 1f) * h
+        val leftCenterY = ley - (stickerPaint.descent() + stickerPaint.ascent()) / 2
+        canvas.drawText(earEmoji, lex, leftCenterY, stickerPaint)
+
+        // Right ear
+        val rex = (faceRight - fw * 0.25f).coerceIn(0f, 1f) * w
+        val rey = (faceTop - fh * 0.15f).coerceIn(0f, 1f) * h
+        val rightCenterY = rey - (stickerPaint.descent() + stickerPaint.ascent()) / 2
+        canvas.drawText(earEmoji, rex, rightCenterY, stickerPaint)
       }
 
-      if (animalEmoji.isNotEmpty()) {
-        val stickerSize = w * 0.28f
-        paint.textSize = stickerSize
-        val centerY = h * 0.88f - (paint.descent() + paint.ascent()) / 2
-        canvas.drawText(animalEmoji, w * 0.78f, centerY, paint)
-
-        if (accentEmoji.isNotEmpty()) {
-          val accentSize = w * 0.15f
-          paint.textSize = accentSize
-          val accentY = h * 0.88f - (paint.descent() + paint.ascent()) / 2
-          canvas.drawText(accentEmoji, w * 0.22f, accentY, paint)
-        }
+      // Draw animal nose on the nose
+      val noseEmoji = when (currentAnimal) {
+        Animal.CAT -> "🐱"
+        Animal.DOG -> "🐶"
+        else -> null
       }
-    }
-
-    // If saving the photo, we also draw the header banner text
-    if (isForSavedPhoto) {
-      val bannerText = getBannerText()
-      if (bannerText.isNotEmpty()) {
-        val bannerHeight = h * 0.08f
-        val bannerWidth = w * 0.6f
-        val left = (w - bannerWidth) / 2
-        val top = h * 0.03f
-        val right = left + bannerWidth
-        val bottom = top + bannerHeight
-
-        val rectPaint = Paint().apply {
-          color = 0x99000000.toInt()
-          style = Paint.Style.FILL
-        }
-        val rect = RectF(left, top, right, bottom)
-        canvas.drawRoundRect(rect, bannerHeight / 2, bannerHeight / 2, rectPaint)
-
-        // Draw text
-        val textPaint = Paint().apply {
-          color = Color.WHITE
-          textSize = bannerHeight * 0.5f
-          isAntiAlias = true
-          textAlign = Paint.Align.CENTER
-          typeface = Typeface.DEFAULT_BOLD
-        }
-        val textY = top + bannerHeight / 2 - (textPaint.descent() + textPaint.ascent()) / 2
-        canvas.drawText(bannerText, w / 2, textY, textPaint)
+      if (noseEmoji != null) {
+        val stickerPaint = themeOverlayView.stickerPaint
+        stickerPaint.textSize = w * 0.06f
+        val nx = faceCenterX * w
+        val ny = (faceCenterY + (faceBottom - faceTop) * 0.08f).coerceIn(0f, 1f) * h
+        val noseCenterY = ny - (stickerPaint.descent() + stickerPaint.ascent()) / 2
+        canvas.drawText(noseEmoji, nx, noseCenterY, stickerPaint)
       }
     }
+
   }
 
   private fun addDecorationsToSavedPhoto(uri: Uri) {
     try {
-      // 1. Load the original bitmap
-      val inputStream = contentResolver.openInputStream(uri) ?: return
-      val originalBitmap = BitmapFactory.decodeStream(inputStream)
-      inputStream.close()
+      // 1. Load the original bitmap (stream closed automatically via use)
+      val originalBitmap = contentResolver.openInputStream(uri)?.use { stream ->
+        BitmapFactory.decodeStream(stream)
+      } ?: return
 
       if (originalBitmap == null) return
 
       // 2. Rotate bitmap if necessary using EXIF data
-      val rotatedBitmap = rotateBitmapFromUri(this, uri, originalBitmap)
+      var workingBitmap = rotateBitmapFromUri(this, uri, originalBitmap)
 
-      // 3. Create a mutable copy of the bitmap
-      val mutableBitmap = rotatedBitmap.copy(Bitmap.Config.ARGB_8888, true)
-      
-      // 4. Draw decorations on the canvas
+      // 3. Mirror front camera images horizontally (selfie mode)
+      if (useFrontCamera) {
+        val matrix = Matrix().apply { preScale(-1f, 1f) }
+        val mirrored = Bitmap.createBitmap(workingBitmap, 0, 0, workingBitmap.width, workingBitmap.height, matrix, false)
+        workingBitmap.recycle()
+        workingBitmap = mirrored
+      }
+
+      // 4. Create a mutable copy of the bitmap
+      val mutableBitmap = workingBitmap.copy(Bitmap.Config.ARGB_8888, true)
+
+      // 5. Draw decorations on the canvas
       val canvas = Canvas(mutableBitmap)
       drawDecorations(canvas, mutableBitmap.width.toFloat(), mutableBitmap.height.toFloat(), isForSavedPhoto = true)
 
-      // 5. Save the updated bitmap back to the same Uri
-      val outputStream = contentResolver.openOutputStream(uri) ?: return
-      mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
-      outputStream.close()
+      // 6. Save the updated bitmap back to the same Uri (stream closed automatically via use)
+      contentResolver.openOutputStream(uri)?.use { outputStream ->
+        mutableBitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+      }
 
       // Recycle bitmaps to free memory
-      if (rotatedBitmap != originalBitmap) {
+      if (workingBitmap != originalBitmap) {
         originalBitmap.recycle()
       }
-      rotatedBitmap.recycle()
+      workingBitmap.recycle()
       mutableBitmap.recycle()
     } catch (e: Exception) {
       android.util.Log.e("GiggleCam", "Error decorating photo: ${e.message}", e)
@@ -1149,14 +1094,14 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     val switchStickers = dialog.findViewById<androidx.appcompat.widget.SwitchCompat>(R.id.switch_show_stickers)
     switchStickers.isChecked = showStickers
 
-    // Time limit picker buttons
+    // Time limit picker buttons (IDs in XML have legacy names, values are correct)
     val timeOptions = listOf(
       dialog.findViewById<TextView>(R.id.btn_time_15),
       dialog.findViewById<TextView>(R.id.btn_time_30),
       dialog.findViewById<TextView>(R.id.btn_time_45),
       dialog.findViewById<TextView>(R.id.btn_time_60)
     )
-    val timeValues = listOf(5, 15, 30, 45)
+    val timeValues = listOf(5, 15, 30, 45) // Minutes - matches button text "5 min" etc.
     var selectedTime = playTimeLimitMinutes
 
     fun updateTimeButtonStyles() {
@@ -1208,10 +1153,12 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       showStickers = switchStickers.isChecked
       
       val prefs = getSharedPreferences("GiggleCamPrefs", Context.MODE_PRIVATE)
-      prefs.edit().putBoolean("save_photos_to_gallery", savePhotosToGallery).apply()
-      prefs.edit().putInt("play_time_limit_minutes", playTimeLimitMinutes).apply()
-      prefs.edit().putBoolean("use_front_camera", useFrontCamera).apply()
-      prefs.edit().putBoolean("show_stickers", showStickers).apply()
+      prefs.edit()
+        .putBoolean("save_photos_to_gallery", savePhotosToGallery)
+        .putInt("play_time_limit_minutes", playTimeLimitMinutes)
+        .putBoolean("use_front_camera", useFrontCamera)
+        .putBoolean("show_stickers", showStickers)
+        .apply()
 
       // Rebind camera with new setting immediately
       bindCameraUseCases()
@@ -1265,7 +1212,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
       dialog.window?.insetsController?.hide(WindowInsets.Type.systemBars())
     } else {
-      @Suppress("DESUPPRESS", "DEPRECATION")
+      @Suppress("DEPRECATION")
       dialog.window?.decorView?.systemUiVisibility = (
         View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
         View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
@@ -1354,9 +1301,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
   override fun onSensorChanged(event: SensorEvent?) {
     if (event?.sensor?.type == Sensor.TYPE_GAME_ROTATION_VECTOR) {
-      val rotationMatrix = FloatArray(9)
       SensorManager.getRotationMatrixFromVector(rotationMatrix, event.values)
-      val orientation = FloatArray(3)
       SensorManager.getOrientation(rotationMatrix, orientation)
       tiltRoll = orientation[2]  // roll (+ = right side down)
       tiltPitch = orientation[1] // pitch (+ = top tilting forward/away)
@@ -1382,9 +1327,8 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         when (currentAnimal) {
           Animal.CAT -> listOf("🐱", "🧶", "🐭", "🐟", "⚽", "🧸", "🐾", "🎈", "🚗", "🐰")
           Animal.DOG -> listOf("🐶", "🦴", "🎾", "⚽", "🏀", "⭐", "🧸", "🚗", "🐾", "🌈")
-          Animal.BIRD -> listOf("🐦", "🪶", "🌸", "🦋", "⚽", "🎈", "🧸", "🌈", "🪀", "🐸")
-          Animal.COW -> listOf("🐮", "🥛", "🌾", "🍀", "⚽", "🎈", "🧸", "🚜", "🌟", "🐰")
-          Animal.DUCK -> listOf("🦆", "🫧", "🌊", "🪷", "⚽", "🎈", "🧸", "🚤", "🌈", "🐸")
+          Animal.LION -> listOf("🦁", "🦴", "🌅", "⚽", "🎈", "🧸", "🐾", "🌟", "🌴", "🐆")
+          Animal.RABBIT -> listOf("🐰", "🥕", "🌿", "🌸", "⚽", "🧸", "🌈", "🎈", "🌻", "🦋")
           else -> emptyList()
         }
       }
@@ -1406,7 +1350,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       val isLarge = emoji in largeEmojis
       val size = if (isLarge) 0.14f else 0.08f
 
-      currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.1f, 0.9f), size))
+      currentStickers.add(Sticker(emoji, x.coerceIn(0.1f, 0.9f), y.coerceIn(0.18f, 0.9f), size))
     }
   }
 
@@ -1424,6 +1368,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       cubicTo(-0.5f, 0.3f, -0.45f, -0.35f, 0f, -1f)
       close()
     }
+    private val particleRandom = java.util.Random()
     private val ballPaint = Paint().apply {
       isAntiAlias = true
       style = Paint.Style.FILL
@@ -1434,11 +1379,47 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       strokeWidth = 3f
       strokeJoin = Paint.Join.ROUND
     }
-    private val ballTextPaint = Paint().apply {
+    // Pre-allocated paints for drawDecorations (called every frame by onDraw)
+    val decorPaint = Paint().apply {
       isAntiAlias = true
       textAlign = Paint.Align.CENTER
-      color = android.graphics.Color.WHITE
-      typeface = Typeface.DEFAULT_BOLD
+    }
+    val springTintPaint = Paint().apply {
+      color = 0x12FFC0CB.toInt()
+      style = Paint.Style.FILL
+    }
+    val summerTintPaint = Paint().apply {
+      color = 0x18FFD700.toInt()
+      style = Paint.Style.FILL
+    }
+    val sunPaint = Paint().apply {
+      color = 0x33FF9800.toInt()
+      style = Paint.Style.FILL
+      isAntiAlias = true
+    }
+    val autumnTintPaint = Paint().apply {
+      color = 0x180000FF.toInt()
+      style = Paint.Style.FILL
+    }
+    val rainPaint = Paint().apply {
+      color = 0xCC87CEEB.toInt()
+      style = Paint.Style.FILL
+      isAntiAlias = true
+      textAlign = Paint.Align.CENTER
+    }
+    val winterTintPaint = Paint().apply {
+      color = 0x12FFFFFF.toInt()
+      style = Paint.Style.FILL
+    }
+    val snowPaint = Paint().apply {
+      color = 0xCCFFFFFF.toInt()
+      style = Paint.Style.FILL
+      isAntiAlias = true
+      textAlign = Paint.Align.CENTER
+    }
+    val stickerPaint = Paint().apply {
+      isAntiAlias = true
+      textAlign = Paint.Align.CENTER
     }
     // Gentle falling particles for weather effects
     val rainX = FloatArray(12)
@@ -1459,7 +1440,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     fun reinitializeParticles(w: Float, h: Float) {
       if (w <= 0f || h <= 0f) return
-      val rand = java.util.Random()
+      val rand = particleRandom
       for (i in rainX.indices) {
         rainX[i] = rand.nextFloat() * w
         rainY[i] = rand.nextFloat() * h
@@ -1492,7 +1473,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             rainX[i] -= rainSpeed[i] * 0.15f
             if (rainY[i] > h) {
               rainY[i] = -10f
-              rainX[i] = java.util.Random().nextFloat() * w
+              rainX[i] = particleRandom.nextFloat() * w
             }
           }
         }
@@ -1503,7 +1484,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             snowRot[i] += 0.8f
             if (snowY[i] > h) {
               snowY[i] = -5f
-              snowX[i] = java.util.Random().nextFloat() * w
+              snowX[i] = particleRandom.nextFloat() * w
             }
           }
         }
@@ -1514,7 +1495,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             petalRot[i] += 0.5f
             if (petalY[i] > h) {
               petalY[i] = -10f
-              petalX[i] = java.util.Random().nextFloat() * w
+              petalX[i] = particleRandom.nextFloat() * w
             }
           }
         }
@@ -1674,6 +1655,73 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
       val g = (Color.green(c1) + ((Color.green(c2) - Color.green(c1)) * t).toInt()).coerceIn(0, 255)
       val b = (Color.blue(c1) + ((Color.blue(c2) - Color.blue(c1)) * t).toInt()).coerceIn(0, 255)
       return Color.argb(a, r, g, b)
+    }
+  }
+
+  @OptIn(ExperimentalGetImage::class)
+  inner class FaceAnalyzer : ImageAnalysis.Analyzer {
+    @android.annotation.SuppressLint("UnsafeOptInUsageError")
+    override fun analyze(proxy: ImageProxy) {
+      val now = System.currentTimeMillis()
+      if (currentMode != Mode.ANIMALS || now - lastFaceDetectTime < FACE_DETECT_INTERVAL_MS) {
+        proxy.close()
+        return
+      }
+      lastFaceDetectTime = now
+
+      val mediaImage = proxy.image ?: run { proxy.close(); return }
+      val rotation = proxy.imageInfo.rotationDegrees
+      val imgW: Float = proxy.width.toFloat()
+      val imgH: Float = proxy.height.toFloat()
+      val inputImage = InputImage.fromMediaImage(mediaImage, rotation)
+      val detector = faceDetector ?: run { proxy.close(); return }
+
+      detector.process(inputImage)
+        .addOnSuccessListener { faces ->
+          if (faces.isEmpty()) {
+            faceCenterX = -1f
+          } else {
+            val halfW = imgW * 0.5f
+            val halfH = imgH * 0.5f
+            val best = faces.minBy { face ->
+              val fc = face.boundingBox.centerX().toFloat()
+              val fy = face.boundingBox.centerY().toFloat()
+              java.lang.Math.hypot((fc - halfW).toDouble(), (fy - halfH).toDouble())
+            }
+            val rect = best.boundingBox
+            // Normalized coordinates in sensor orientation
+            val nfx = rect.centerX().toFloat() / imgW
+            val nfy = rect.centerY().toFloat() / imgH
+            val nfl = rect.left.toFloat() / imgW
+            val nft = rect.top.toFloat() / imgH
+            val nfr = rect.right.toFloat() / imgW
+            val nfb = rect.bottom.toFloat() / imgH
+
+            // Rotate to display orientation
+            val rot: (Float, Float, Int) -> Pair<Float, Float> = { x, y, r ->
+              when (r) {
+                90 -> Pair(y, 1f - x)
+                270 -> Pair(1f - y, x)
+                180 -> Pair(1f - x, 1f - y)
+                else -> Pair(x, y)
+              }
+            }
+            val (cx, cy) = rot(nfx, nfy, rotation)
+            val (l, t) = rot(nfl, nft, rotation)
+            val (r, b) = rot(nfr, nfb, rotation)
+
+            // Mirror X for front camera
+            val mir: (Float) -> Float = if (useFrontCamera) { v -> 1f - v } else { v -> v }
+
+            faceCenterX = mir(cx)
+            faceCenterY = cy
+            faceLeft = mir(l).coerceIn(0f, 1f)
+            faceTop = t.coerceIn(0f, 1f)
+            faceRight = mir(r).coerceIn(0f, 1f)
+            faceBottom = b.coerceIn(0f, 1f)
+          }
+        }
+        .addOnCompleteListener { proxy.close() }
     }
   }
 }

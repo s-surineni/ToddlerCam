@@ -85,7 +85,7 @@
                 android:text="⭕"
                 android:textSize="28sp"
                 android:gravity="center"
-                android:textColor="#FF5A00"
+                android:textColor="#D5B5FF"
                 android:layout_marginEnd="16dp" />
 
             <LinearLayout
@@ -202,7 +202,7 @@
         android:textColor="#FFFFFF"
         android:textSize="16sp"
         android:textStyle="bold"
-        android:clickable="true"
+        android:filterTouchesWhenObscured="true" android:clickable="true"
         android:focusable="true"/>
 
 </LinearLayout>

@@ -3,10 +3,12 @@ package com.toddlerapps.simplecam
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Rect
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sqrt
 
@@ -34,6 +36,16 @@ class CircleDetectionView @JvmOverloads constructor(
     private val pointerDownY = mutableMapOf<Int, Float>()
     private var tapConsumed = false
 
+    // Cap at 200 points to prevent unbounded growth
+    private val maxTouchPoints = 200
+
+    // Cached for onDraw path
+    private val touchPath = android.graphics.Path()
+
+    // Cached for onLayout
+    private val exclusionRect = Rect()
+    private val exclusionRects = mutableListOf<Rect>()
+
     fun setCircleDetectionCallback(callback: () -> Unit) {
         circleDetectionCallback = callback
     }
@@ -43,6 +55,7 @@ class CircleDetectionView @JvmOverloads constructor(
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (!isEnabled) return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 val idx = event.actionIndex
@@ -57,7 +70,9 @@ class CircleDetectionView @JvmOverloads constructor(
                 pointerDownX[id] = x
                 pointerDownY[id] = y
                 activePointers[id] = Pair(x, y)
-                touchPoints.add(Pair(x, y))
+                if (touchPoints.size < maxTouchPoints) {
+                    touchPoints.add(Pair(x, y))
+                }
             }
             MotionEvent.ACTION_MOVE -> {
                 for (i in 0 until event.pointerCount) {
@@ -65,7 +80,9 @@ class CircleDetectionView @JvmOverloads constructor(
                     val x = event.getX(i)
                     val y = event.getY(i)
                     activePointers[id] = Pair(x, y)
-                    touchPoints.add(Pair(x, y))
+                    if (touchPoints.size < maxTouchPoints) {
+                        touchPoints.add(Pair(x, y))
+                    }
                 }
                 invalidate()
             }
@@ -124,46 +141,57 @@ class CircleDetectionView @JvmOverloads constructor(
     }
 
     private fun isCircleDetected(): Boolean {
-        if (touchPoints.size < minPointsForCircle) return false
+        val n = touchPoints.size
+        if (n < minPointsForCircle) return false
 
-        // Calculate center of all points
-        val centerX = touchPoints.map { it.first }.average().toFloat()
-        val centerY = touchPoints.map { it.second }.average().toFloat()
-
-        // Calculate average distance from center (radius)
-        val distances = touchPoints.map { point ->
-            sqrt((point.first - centerX).pow(2) + (point.second - centerY).pow(2))
+        // Single pass: compute centroid
+        var sumX = 0.0
+        var sumY = 0.0
+        for ((x, y) in touchPoints) {
+            sumX += x
+            sumY += y
         }
-        val avgRadius = distances.average()
+        val cx = (sumX / n).toFloat()
+        val cy = (sumY / n).toFloat()
 
+        // Second pass: compute average radius and variance
+        var sumDist = 0.0
+        var sumSqDiff = 0.0
+        for ((x, y) in touchPoints) {
+            val dx = x - cx
+            val dy = y - cy
+            val dist = sqrt((dx * dx + dy * dy).toDouble())
+            sumDist += dist
+            sumSqDiff += dist * dist
+        }
+        val avgRadius = sumDist / n
         if (avgRadius < minCircleRadius) return false
 
-        // Check if all points are roughly equidistant from center (circularity)
-        val variance = distances.map { (it - avgRadius).pow(2) }.average()
+        val variance = max(0.0, sumSqDiff / n - avgRadius * avgRadius)
         val stdDev = sqrt(variance)
-
-        // If standard deviation is small relative to radius, it's a circle
         return stdDev < avgRadius * 0.3
     }
 
     override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
         super.onLayout(changed, left, top, right, bottom)
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-            val rects = listOf(Rect(0, 0, width, height))
-            systemGestureExclusionRects = rects
+            exclusionRect.set(0, 0, width, height)
+            exclusionRects.clear()
+            exclusionRects.add(exclusionRect)
+            systemGestureExclusionRects = exclusionRects
         }
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        
-        // Draw touch path
+
         if (touchPoints.size > 1) {
-            for (i in 0 until touchPoints.size - 1) {
-                val p1 = touchPoints[i]
-                val p2 = touchPoints[i + 1]
-                canvas.drawLine(p1.first, p1.second, p2.first, p2.second, paint)
+            touchPath.reset()
+            touchPath.moveTo(touchPoints[0].first, touchPoints[0].second)
+            for (i in 1 until touchPoints.size) {
+                touchPath.lineTo(touchPoints[i].first, touchPoints[i].second)
             }
+            canvas.drawPath(touchPath, paint)
         }
     }
 }
